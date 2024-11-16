@@ -1,2 +1,2 @@
-git pull github main
-Write-Host "已从github远程仓库下载最新代码"
+git pull gitlab main
+Write-Host "已从gitlab远程仓库下载最新代码"
