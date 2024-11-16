@@ -2,32 +2,45 @@ use std::{ffi::CString, os::raw::{c_char, c_int, c_long}};
 use base64::Engine;
 use super::*;
 
-// 枚举容器列表结果
+/// 枚举容器列表结果
 pub struct EnumContainerResult {
+    /// 容器名称列表
     pub sz_container_list: Vec<String>,
+    /// 返回结果
     pub result: ErrorDefine,
 }
-// 容器打开结果
+/// 容器打开结果
 pub struct ContainerOpenResult {
+    /// 容器名称
     pub sz_container_name: String,
+    /// 容器打开句柄
     pub h_container: CONTAINERHANDLE,
+    /// 返回结果
     pub result: ErrorDefine,
 }
-// 枚举：容器类型【1 RSA；2 SM2】
+/// 容器类型
 pub enum ContainerType {
+    /// 未知类型
     CTUnknown,
+    /// `1` RSA类型
     CTRsa,
+    /// `2` SM2类型
     CTSm2,
 }
-// 获取容器类型结果
+/// 获取容器类型结果
 pub struct ContainerTypeResult {
+    /// 容器类型
     pub container_type: ContainerType,
+    /// 返回结果
     pub result: ErrorDefine,
 }
-// 证书导出结果
+/// 证书导出结果
 pub struct ExCertResult {
+    /// 证书字节数组
     pub cert: Vec<u8>,
+    /// 证书base64
     pub cert64: String,
+    /// 返回结果
     pub result: ErrorDefine,
 }
 
@@ -47,9 +60,12 @@ type SKFGetContainerType = unsafe extern "C" fn(hContainer: CONTAINERHANDLE, pul
 const FN_NAME_SKF_EXPORTCERTIFICATE: &[u8] = b"SKF_ExportCertificate";
 type SKFExportCertificate = unsafe extern "C" fn(hContainer: CONTAINERHANDLE, bSignFlag: c_int, pbCert: BYTEPTR, pulCertLen: ULONGPTR) -> c_long;
 
+/// 容器管理类
 pub struct ContainerManager;
 impl ContainerManager {
-    // 枚举应用内的容器
+    /// 枚举应用内的容器
+    /// # 参数
+    /// - `h_app` 应用打开句柄
     pub fn list_containers(h_app: APPLICATIONHANDLE) -> Option<EnumContainerResult> {
         if let Some(ref fn_enum_container) = unsafe {LibUtil::load_fun_in_dll::<SKFEnumContainer>(FN_NAME_SKF_ENUMCONTAINER)} {
             let mut sz_container_name_vec: Vec<c_char> = vec![0; 255];
@@ -63,7 +79,10 @@ impl ContainerManager {
         }
         None
     }
-    // 打开容器
+    /// 打开容器
+    /// # 参数
+    /// - `h_app` 应用打开句柄
+    /// - `container_name` 容器名称
     pub fn open_container(h_app: APPLICATIONHANDLE, container_name: &str) -> Option<ContainerOpenResult> {
         if let Some(ref fn_open_container) = unsafe {LibUtil::load_fun_in_dll::<SKFOpenContainer>(FN_NAME_SKF_OPENCONTAINER)} {
             if let Ok(sz_container_name_cstr) = CString::new(container_name) {
@@ -79,7 +98,9 @@ impl ContainerManager {
         }
         None
     }
-    // 关闭容器
+    /// 关闭容器
+    /// # 参数
+    /// - `h_container` 容器打开句柄
     pub fn close_container(h_container: CONTAINERHANDLE) -> Option<ErrorDefine> {
         if let Some(ref fn_close_container) = unsafe {LibUtil::load_fun_in_dll::<SKFCloseContainer>(FN_NAME_SKF_CLOSECONTAINER)} {
             let result = unsafe {fn_close_container(h_container)};
@@ -87,7 +108,9 @@ impl ContainerManager {
         }
         None
     }
-    // 获取容器类型
+    /// 获取容器类型
+    /// # 参数
+    /// - `h_container` 容器打开句柄
     pub fn get_container_type(h_container: CONTAINERHANDLE) -> Option<ContainerTypeResult> {
         if let Some(ref fn_get_ct_type) = unsafe {LibUtil::load_fun_in_dll::<SKFGetContainerType>(FN_NAME_SKF_GETCONTAINERTYPE)} {
             let mut pul_container_type: c_long = 0;
@@ -99,7 +122,10 @@ impl ContainerManager {
         }
         None
     }
-    // 导出容器内的证书
+    /// 导出容器内的证书
+    /// # 参数
+    /// - `h_container` 容器打开句柄
+    /// - `b_sign_flag` 是否导出签名证书，为true时导出签名证书，否则导出加密证书
     pub fn export_cert(h_container: CONTAINERHANDLE, b_sign_flag: bool) -> Option<ExCertResult> {
         if let Some(ref fn_export_cert) = unsafe {LibUtil::load_fun_in_dll::<SKFExportCertificate>(FN_NAME_SKF_EXPORTCERTIFICATE)} {
             let mut cert: Vec<u8> = vec![0; 2048];

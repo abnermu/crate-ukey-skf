@@ -1,16 +1,19 @@
 use std::os::raw::c_long;
 
-// 错误定义
+/// 错误定义
 pub struct ErrorDefine {
+    /// 错误编码
     pub code: c_long,
+    /// 错误描述文本
     pub msg: &'static str,
 }
 impl ErrorDefine {
+    /// 判断错误类型是否为OK
     pub fn is_ok(&self) -> bool {
         return self.code == 0x00000000;
     }
 }
-// 错误编码集合
+/// 错误编码集合
 pub struct ErrorCodes;
 impl ErrorCodes {
     pub const SAR_OK:                        ErrorDefine = ErrorDefine {code: 0x00000000, msg: "成功"};
@@ -92,7 +95,9 @@ impl ErrorCodes {
         ErrorCodes::SAR_FILE_ATTRIBUTE_ERR, ErrorCodes::SAR_DEV_NO_AUTH, ErrorCodes::SAR_INVALID_PARAM2_ERR,
     ];
 
-    // 根据编码获取错误定义对象
+    /// 根据编码获取错误定义对象
+    /// # 返回值
+    /// 返回错误定义结构对象
     pub fn get_error(code: c_long) -> ErrorDefine {
         for error in &(ErrorCodes::ERROR_DEFINES) {
             if error.code == code {
@@ -101,7 +106,7 @@ impl ErrorCodes {
         }
         ErrorDefine {code, msg: "未知错误"}
     }
-    // 判断是否返回成功
+    /// 判断是否返回成功
     pub fn is_ok(code: c_long) -> bool {
         return code == ErrorCodes::SAR_OK.code;
     }

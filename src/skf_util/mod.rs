@@ -3,12 +3,18 @@ use libloading::{Library, Symbol};
 use asn1_rs::{FromDer, ToDer};
 use super::LPSTR;
 
-// 字符串操作工具类
+/// 字符串操作工具类
 pub struct StringUtil;
 impl StringUtil {
+    /// 依赖的dll名称：JKLX_UKEY_GMAPI.dll
+    /// 
+    /// 位于C:\\Windows\\System32[SysWOW64]下
     pub const LIB_NAME: &str = "JKLX_UKEY_GMAPI.dll";
 
-    // 根据长度读取多个字符串的分组
+    /// 根据长度读取多个字符串的分组
+    /// # 参数
+    /// - `ptr` 字符串指针
+    /// - `total_len` 指针指向的内存长度
     pub unsafe fn read_strings(ptr: LPSTR, total_len: c_long) -> Vec<String> {
         let mut strings: Vec<String> = Vec::new();
         let mut current_start = 0;
@@ -28,7 +34,9 @@ impl StringUtil {
         strings
     }
 
-    // 读单个字符串（以\0结束）
+    /// 读单个字符串（以\0结束）
+    /// # 参数
+    /// - `ptr` 字符串指针
     pub unsafe fn read_string(ptr: LPSTR) -> String {
         match CStr::from_ptr(ptr).to_str() {
             Ok(str) => str.to_string(),
@@ -36,7 +44,10 @@ impl StringUtil {
         }
     }
 
-    // 根据长度读取字节数组
+    /// 根据长度读取字节数组
+    /// # 参数
+    /// - `ptr` 内存指针
+    /// - `total_len` 指针指向的内存长度
     pub unsafe fn read_bytes(ptr: *mut u8, total_len: c_long) -> Vec<u8> {
         return Vec::from_raw_parts(ptr, total_len as usize, total_len as usize);
     }
@@ -44,10 +55,10 @@ impl StringUtil {
 
 #[warn(static_mut_refs)]
 pub static mut SKF: Option<Library> = None;
-// dll操作工具类
+/// dll操作工具类
 pub struct LibUtil;
 impl LibUtil {
-    // 加载dll（全局仅加载一次）
+    /// 加载dll（全局仅加载一次）
     pub unsafe fn load_lib() {
         if SKF.is_none() {
             SKF = match Library::new(StringUtil::LIB_NAME) {
@@ -63,12 +74,14 @@ impl LibUtil {
         // }
     }
 
-    // 获取全局dll加载对象的引用
+    /// 获取全局dll加载对象的引用
     pub unsafe fn get_lib() -> Option<&'static Library> {
         return SKF.as_ref();
     }
 
-    // 从dll中加载function
+    /// 从dll中加载function
+    /// # 参数
+    /// - `func_name` 方法名
     pub unsafe fn load_fun_in_dll<T>(func_name: &[u8]) -> Option<Symbol<T>> 
     where T: 'static 
     {
@@ -92,10 +105,21 @@ enum EnArrType {
     Asn1Sequence,
     Asn1Set,
 }
-// asn1工具类
+/// asn1工具类
 pub struct Asn1Util;
 impl Asn1Util {
-    // sm2加密结果转换为asn1编码
+    /// sm2加密结果转换为asn1编码
+    /// # sm2加密的原始结果结构
+    /// [0; 32][u8; 32][0; 32][u8; 32][u8; 32][u8; 1][0; 3][u8; n]
+    /// # asn1编码结构
+    /// ```
+    /// Sequence {
+    ///     Integer 低32位
+    ///     Integer 高32位
+    ///     OctetString mac校验
+    ///     OctetString 原值密文
+    /// }
+    /// ```
     pub fn sm2enc_to_asn1(sm2_result: Vec<u8>) -> Option<Vec<u8>> {
         // 最小的sm2原始值长度：64位x，64位y，32位mac位，4位原始值长度表示，其余的是原信息加密值
         if sm2_result.len() < 164 {
@@ -131,7 +155,7 @@ impl Asn1Util {
         }
         None
     }
-    // asn1编码转换为sm2加密结果
+    /// asn1编码转换为sm2加密结果
     pub fn asn1_to_sm2enc(asn1_result: Vec<u8>) -> Option<Vec<u8>> {
         // 兼容一下新点的傻吊写法：Sequence->OctetString[Sequence.encode->x+y+mac+org]，只要里边的Sequence
         let mut real_bytes:Vec<u8> = Vec::new();
@@ -185,7 +209,7 @@ impl Asn1Util {
         }
         None
     }
-    // sm2加密结果转换为c1c3c2的标准编码
+    /// sm2加密结果转换为c1c3c2的标准编码
     pub fn sm2enc_to_c1c3c2(sm2_result: Vec<u8>) -> Option<Vec<u8>> {
         // 最小的sm2原始值长度：64位x，64位y，32位mac位，4位原始值长度表示，其余的是原信息加密值
         if sm2_result.len() >= 164 {
@@ -211,7 +235,7 @@ impl Asn1Util {
         }
         None
     }
-    // c1c3c2标准编码转换为sm2加密结果
+    /// c1c3c2标准编码转换为sm2加密结果
     pub fn c1c3c2_to_sm2enc(c1c3c2_result: Vec<u8>) -> Option<Vec<u8>> {
         // 最小的c1c3c2长度：1位标识位，32位x（也有可能是33），32位y（也有可能是33），32位mac位，其余是原信息加密值
         let mut min_bytes_len = 1 + 32 + 32 + 32;
@@ -260,7 +284,7 @@ impl Asn1Util {
         None
     }
 
-    // ecc_sign_to_p7hash内部方法：写入证书颁发机构信息
+    /// ecc_sign_to_p7hash内部方法：写入证书颁发机构信息
     fn write_issuer_item(issuer_item: &x509_parser::x509::AttributeTypeAndValue, writer: &mut dyn Write) {
         let mut vec_is_item_wrapper: Vec<u8> = Vec::new();
         let mut vec_is_item_container: Vec<u8> = Vec::new();
@@ -271,7 +295,13 @@ impl Asn1Util {
         let set_is_item_wrapper = asn1_rs::Set::new(vec_is_item_wrapper.into());
         let _ = set_is_item_wrapper.write_der(writer);
     }
-    // ecc签名结果转换为pkcs7-hash-asn1编码
+    /// ecc签名结果转换为pkcs7-hash-asn1编码
+    /// # 参数
+    /// - `sign_bytes` 签名值字节数组
+    /// - `cert_bytes` 签名证书字节数组
+    /// # ecc签名结果结构
+    /// [0; 32][u8; 32][0; 32][u8; 32]
+    /// # ecc签名的pkcs7编码过于复杂，不做说明
     pub fn ecc_sign_to_p7hash(sign_bytes: Vec<u8>, cert_bytes: Vec<u8>) -> Option<Vec<u8>> {
         // 签名编码容器 
         let mut vec_wrapper: Vec<u8> = Vec::new();
@@ -385,7 +415,7 @@ impl Asn1Util {
         }
         None
     }
-    // p7hash_to_ecc_sign内部方法：循环数组内容，取其最后一个元素的bytes
+    /// p7hash_to_ecc_sign内部方法：循环数组内容，取其最后一个元素的bytes
     fn read_last_item_in_arr(mut content_bytes: Vec<u8>) -> Option<Vec<u8>> {
         loop {
             if let Ok((bytes, any_type)) = asn1_rs::Any::from_der(&content_bytes) {
@@ -411,7 +441,7 @@ impl Asn1Util {
         }
         None
     }
-    // p7hash_to_ecc_sign内部方法：从一个Sequence或Set序列中读取最后一个元素bytes数组
+    /// p7hash_to_ecc_sign内部方法：从一个Sequence或Set序列中读取最后一个元素bytes数组
     fn read_last_item_in_sequence(sequence_bytes: Vec<u8>, arr_type: EnArrType) -> Option<Vec<u8>> {
         match arr_type {
             EnArrType::Asn1Sequence => {
@@ -446,7 +476,7 @@ impl Asn1Util {
             },
         }
     }
-    // pkcs7-asn1编码转换为ecc签名结果
+    /// pkcs7-asn1编码转换为ecc签名结果
     pub fn p7hash_to_ecc_sign(p7bytes: Vec<u8>) -> Option<Vec<u8>> {
         // 读第一层的ctx_header元素
         if let Some(last_bytes) = Asn1Util::read_last_item_in_sequence(p7bytes.clone(), EnArrType::Asn1Sequence) {
