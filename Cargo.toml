@@ -1,0 +1,10 @@
+[package]
+name = "ukey-skf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+asn1-rs = "0.6.2"
+base64 = "0.22.1"
+libloading = "0.8.5"
+x509-parser = "0.16.0"
