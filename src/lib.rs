@@ -75,21 +75,21 @@ fn get_cert_serial_number(cert_bytes: &[u8]) -> Option<String> {
     None
 }
 /// 获取证书有效期开始时间
-/// 格式化：yyyy-MM-dd HH:mm:ss
+/// 格式化：yyyy/MM/dd HH:mm:ss
 fn get_cert_valid_from(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         if let Some(valid_from) = chrono::DateTime::from_timestamp(cert.validity().not_before.timestamp(), 0) {
-            return Some(valid_from.format("%Y-%m-%d %H:%M:%S").to_string());
+            return Some(valid_from.format("%Y/%m/%d %H:%M:%S").to_string());
         }
     }
     None
 }
 /// 获取证书有效期截止时间
-/// 格式化：yyyy-MM-dd HH:mm:ss
+/// 格式化：yyyy/MM/dd HH:mm:ss
 fn get_cert_valid_to(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         if let Some(valid_from) = chrono::DateTime::from_timestamp(cert.validity().not_after.timestamp(), 0) {
-            return Some(valid_from.format("%Y-%m-%d %H:%M:%S").to_string());
+            return Some(valid_from.format("%Y/%m/%d %H:%M:%S").to_string());
         }
     }
     None
