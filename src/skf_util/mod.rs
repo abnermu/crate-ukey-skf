@@ -51,6 +51,11 @@ impl StringUtil {
     pub unsafe fn read_bytes(ptr: *mut u8, total_len: c_long) -> Vec<u8> {
         return Vec::from_raw_parts(ptr, total_len as usize, total_len as usize);
     }
+
+    /// 读取byte数组为hex
+    pub fn read_to_hex(bytes: &[u8]) -> String {
+        return bytes.to_vec().iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+    }
 }
 
 #[warn(static_mut_refs)]

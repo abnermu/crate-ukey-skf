@@ -76,4 +76,19 @@ impl AppManager {
         }
         None
     }
+    /// 获取可用应用句柄
+    /// # 参数
+    /// - `h_dev` 设备连接句柄
+    pub fn get_app_available(h_dev: DEVHANDLE) -> Option<APPLICATIONHANDLE> {
+        // 第一步枚举应用
+        if let Some(app_list) = AppManager::list_apps(h_dev.clone()) {
+            if app_list.result.is_ok() && app_list.sz_app_name.len() > 0 {
+                // 第二步打开应用
+                if let Some(app_opener) = AppManager::open_app(h_dev.clone(), &app_list.sz_app_name[0]) {
+                    return if app_opener.result.is_ok() {Some(app_opener.h_app.clone())} else {None};
+                }
+            }
+        }
+        None
+    }
 }
