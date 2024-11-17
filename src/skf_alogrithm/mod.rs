@@ -185,13 +185,10 @@ impl SecretService {
     /// - `pub_key` 公钥byte数组
     /// - `data` 原文base64
     pub fn ecc_encrypt(h_dev: DEVHANDLE, pub_key: Vec<u8>, data: &str) -> Option<ECCEncryptResult> {
-        println!("ecc_encrypt in");
         if let Some(ref fn_encry) = unsafe {LibUtil::load_fun_in_dll::<SKFExtECCEncrypt>(FN_NAME_SKF_EXTECCENCRYPT)} {
             let data_vec: Vec<u8> = data.as_bytes().to_vec();
             let mut encrypted: Vec<u8> = vec![0; 128 + 32 + 4 + data_vec.len()];
-            println!("before encrypt");
             let result = unsafe {fn_encry(h_dev, pub_key.as_ptr(), data_vec.as_ptr(), data_vec.len() as c_long, encrypted.as_mut_ptr())};
-            println!("after encrypt: {}", result);
             let mut rtn = ECCEncryptResult { 
                 data: data.to_string(), 
                 encrypted: encrypted.clone(), 
