@@ -208,7 +208,7 @@ pub fn encrypt(data: &str) -> String {
                             ContainerManager::close_container(h_container);
                             AppManager::close_app(h_app);
                             DeviceManager::disconnect_dev(h_dev);
-                            return if encrypted.result.is_ok() {encrypted.encrypted_asn1} else {String::from("")};
+                            return if encrypted.result.is_ok() {String::from(encrypted.encrypted_asn1)} else {String::from("")};
                         }
                     }
                 }
@@ -238,7 +238,7 @@ pub fn decrypt(data: &str) -> String {
                     ContainerManager::close_container(h_container);
                     AppManager::close_app(h_app);
                     DeviceManager::disconnect_dev(h_dev);
-                    return if decrypted.result.is_ok() {decrypted.decryptedplain} else {String::from("")};
+                    return if decrypted.result.is_ok() {String::from(decrypted.decryptedplain)} else {String::from("")};
                 }
                 // 最后关闭容器
                 ContainerManager::close_container(h_container);
@@ -268,7 +268,7 @@ pub fn sign_data(data: &str) -> String {
                             ContainerManager::close_container(h_container);
                             AppManager::close_app(h_app);
                             DeviceManager::disconnect_dev(h_dev);
-                            return if signed.result.is_ok() {signed.signature_asn1} else {String::from("")};
+                            return if signed.result.is_ok() {String::from(signed.signature_asn1)} else {String::from("")};
                         }
                     }
                 }
