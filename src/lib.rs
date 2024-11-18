@@ -208,7 +208,7 @@ pub fn encrypt(data: &str) -> String {
                             ContainerManager::close_container(h_container);
                             AppManager::close_app(h_app);
                             DeviceManager::disconnect_dev(h_dev);
-                            return if encrypted.result.is_ok() {String::from(encrypted.encrypted_asn1)} else {String::from("")};
+                            return if encrypted.result.is_ok() {encrypted.encrypted_asn1} else {String::from("")};
                         }
                     }
                 }
@@ -227,18 +227,22 @@ pub fn encrypt(data: &str) -> String {
 /// # 参数
 /// - `data` 原文
 pub fn decrypt(data: &str) -> String {
+    println!("进入decrypt");
     // 第一步获取可用设备句柄
     if let Some(h_dev) = DeviceManager::get_device_available() {
+        println!("已获得设备连接句柄");
         // 第二步获取应用句柄
         if let Some(h_app) = AppManager::get_app_available(h_dev.clone()) {
+            println!("已获得应用句柄");
             // 第三步获取容器句柄
             if let Some(h_container) = ContainerManager::get_container_available(h_app.clone()) {
+                println!("已获得容器句柄");
                 if let Some(decrypted) = SecretService::ecc_decrypt(h_container.clone(), data) {
                     // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
                     ContainerManager::close_container(h_container);
                     AppManager::close_app(h_app);
                     DeviceManager::disconnect_dev(h_dev);
-                    return if decrypted.result.is_ok() {String::from(decrypted.decryptedplain)} else {String::from("")};
+                    return if decrypted.result.is_ok() {decrypted.decryptedplain} else {String::from("")};
                 }
                 // 最后关闭容器
                 ContainerManager::close_container(h_container);
@@ -268,7 +272,7 @@ pub fn sign_data(data: &str) -> String {
                             ContainerManager::close_container(h_container);
                             AppManager::close_app(h_app);
                             DeviceManager::disconnect_dev(h_dev);
-                            return if signed.result.is_ok() {String::from(signed.signature_asn1)} else {String::from("")};
+                            return if signed.result.is_ok() {signed.signature_asn1} else {String::from("")};
                         }
                     }
                 }
