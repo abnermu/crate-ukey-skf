@@ -20,6 +20,11 @@ pub use skf_file::*;
 pub use skf_container::*;
 pub use skf_alogrithm::*;
 
+struct PinStore {
+    dev_name: String,
+    pin: String,
+}
+static mut PIN_STORE: Option<PinStore> = None;
 /// 证书信息类型
 #[derive(PartialEq)]
 pub enum CertInfo {
@@ -43,11 +48,11 @@ pub enum CertInfo {
 /// - `for_sign` 获取签名证书
 fn get_cert_content(for_sign: bool) -> Option<Vec<u8>> {
     // 第一步获取可用设备句柄
-    if let Some(h_dev) = DeviceManager::get_device_available() {
+    if let Some((_dev_name, h_dev)) = DeviceManager::get_device_available() {
         // 第二步获取应用句柄
-        if let Some(h_app) = AppManager::get_app_available(h_dev.clone()) {
+        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
             // 第三步获取容器句柄
-            if let Some(h_container) = ContainerManager::get_container_available(h_app.clone()) {
+            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
                 // 最后导出证书
                 if let Some(cert) = ContainerManager::export_cert(h_container.clone(), for_sign) {
                     // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
@@ -138,6 +143,38 @@ fn get_cert_issuer(cert_bytes: &[u8]) -> Option<String> {
     }
     None
 }
+///判断当前设备是否校验过
+pub fn is_pin_checked(sz_name: &str) -> bool {
+    return unsafe {PIN_STORE.is_some() && PIN_STORE.as_ref().unwrap().dev_name == sz_name};
+}
+/// pin码校验
+/// # 参数
+/// - `pin` 用户密码
+pub fn check_pin(pin: &str) -> Option<CheckPinResult> {
+    // 第一步获取可用设备句柄
+    if let Some((dev_name, h_dev)) = DeviceManager::get_device_available() {
+        // 第二步获取应用句柄
+        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
+            if let Some(check_result) = AuthManager::check_pin(h_app.clone(), pin) {
+                // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄都关一遍
+                AppManager::close_app(h_app);
+                DeviceManager::disconnect_dev(h_dev);
+                unsafe {
+                    PIN_STORE = Some(PinStore {
+                        dev_name,
+                        pin: pin.to_string(),
+                    });
+                };
+                return Some(check_result);
+            }
+            // 最后关闭应用
+            AppManager::close_app(h_app);
+        }
+        // 最后关闭连接
+        DeviceManager::disconnect_dev(h_dev);
+    }
+    None
+}
 /// 获取设备号
 /// # 返回值
 /// 返回第一个可用状态的设备号
@@ -195,11 +232,11 @@ pub fn get_ca_info(info_type: CertInfo, for_sign: bool) -> String {
 /// - `data` 原文
 pub fn encrypt(data: &str) -> String {
     // 第一步获取可用设备句柄
-    if let Some(h_dev) = DeviceManager::get_device_available() {
+    if let Some((_dev_name, h_dev)) = DeviceManager::get_device_available() {
         // 第二步获取应用句柄
-        if let Some(h_app) = AppManager::get_app_available(h_dev.clone()) {
+        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
             // 第三步获取容器句柄
-            if let Some(h_container) = ContainerManager::get_container_available(h_app.clone()) {
+            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
                 // 加密需要传参公钥，所以得导出一下公钥
                 if let Some(pub_key) = SecretService::ex_public_key(h_container.clone(), false) {
                     if pub_key.result.is_ok() {
@@ -227,22 +264,21 @@ pub fn encrypt(data: &str) -> String {
 /// # 参数
 /// - `data` 原文
 pub fn decrypt(data: &str) -> String {
-    println!("进入decrypt");
     // 第一步获取可用设备句柄
-    if let Some(h_dev) = DeviceManager::get_device_available() {
-        println!("已获得设备连接句柄");
+    if let Some((dev_name, h_dev)) = DeviceManager::get_device_available() {
         // 第二步获取应用句柄
-        if let Some(h_app) = AppManager::get_app_available(h_dev.clone()) {
-            println!("已获得应用句柄");
+        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
             // 第三步获取容器句柄
-            if let Some(h_container) = ContainerManager::get_container_available(h_app.clone()) {
-                println!("已获得容器句柄");
-                if let Some(decrypted) = SecretService::ecc_decrypt(h_container.clone(), data) {
-                    // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
-                    ContainerManager::close_container(h_container);
-                    AppManager::close_app(h_app);
-                    DeviceManager::disconnect_dev(h_dev);
-                    return if decrypted.result.is_ok() {decrypted.decryptedplain} else {String::from("")};
+            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
+                // 解密前需要校验用户口令
+                if is_pin_checked(&dev_name) || AuthManager::check_pin_dialog() {
+                    if let Some(decrypted) = SecretService::ecc_decrypt(h_container.clone(), data) {
+                        // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
+                        ContainerManager::close_container(h_container);
+                        AppManager::close_app(h_app);
+                        DeviceManager::disconnect_dev(h_dev);
+                        return if decrypted.result.is_ok() {decrypted.decryptedplain} else {String::from("")};
+                    }
                 }
                 // 最后关闭容器
                 ContainerManager::close_container(h_container);
@@ -260,19 +296,22 @@ pub fn decrypt(data: &str) -> String {
 /// - `data` 原文
 pub fn sign_data(data: &str) -> String {
     // 第一步获取可用设备句柄
-    if let Some(h_dev) = DeviceManager::get_device_available() {
+    if let Some((dev_name, h_dev)) = DeviceManager::get_device_available() {
         // 第二步获取应用句柄
-        if let Some(h_app) = AppManager::get_app_available(h_dev.clone()) {
+        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
             // 第三步获取容器句柄
-            if let Some(h_container) = ContainerManager::get_container_available(h_app.clone()) {
+            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
                 if let Some(sign_cert) = ContainerManager::export_cert(h_container.clone(), true) {
                     if sign_cert.result.is_ok() {
-                        if let Some(signed) = SecretService::ecc_sign_data(h_container.clone(), data, &sign_cert.cert64) {
-                            // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
-                            ContainerManager::close_container(h_container);
-                            AppManager::close_app(h_app);
-                            DeviceManager::disconnect_dev(h_dev);
-                            return if signed.result.is_ok() {signed.signature_asn1} else {String::from("")};
+                        // 签名前需要校验用户口令
+                        if is_pin_checked(&dev_name) || AuthManager::check_pin_dialog() {
+                            if let Some(signed) = SecretService::ecc_sign_data(h_container.clone(), data, &sign_cert.cert64) {
+                                // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
+                                ContainerManager::close_container(h_container);
+                                AppManager::close_app(h_app);
+                                DeviceManager::disconnect_dev(h_dev);
+                                return if signed.result.is_ok() {signed.signature_asn1} else {String::from("")};
+                            }
                         }
                     }
                 }
@@ -293,11 +332,11 @@ pub fn sign_data(data: &str) -> String {
 /// - `signature` 签名值
 pub fn verify_sign(org: &str, signature: &str) -> bool {
     // 第一步获取可用设备句柄
-    if let Some(h_dev) = DeviceManager::get_device_available() {
+    if let Some((_dev_name, h_dev)) = DeviceManager::get_device_available() {
         // 第二步获取应用句柄
-        if let Some(h_app) = AppManager::get_app_available(h_dev.clone()) {
+        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
             // 第三步获取容器句柄
-            if let Some(h_container) = ContainerManager::get_container_available(h_app.clone()) {
+            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
                 // 验签需要传参公钥，所以得导出一下公钥
                 if let Some(pub_key) = SecretService::ex_public_key(h_container.clone(), true) {
                     if pub_key.result.is_ok() {

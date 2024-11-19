@@ -159,13 +159,13 @@ impl DeviceManager {
         None
     }
     /// 获取设备连接句柄
-    pub fn get_device_available() -> Option<DEVHANDLE> {
+    pub fn get_device_available() -> Option<(String, DEVHANDLE)> {
         // 第一步枚举可用设备列表
         if let Some(dev_list) = DeviceManager::list_dev(true) {
             if dev_list.result.is_ok() && dev_list.sz_name_list.len() > 0 {
                 // 第二步连接设备
                 if let Some(dev_connector) = DeviceManager::connect_dev(&dev_list.sz_name_list[0]) {
-                    return if dev_connector.result.is_ok() {Some(dev_connector.h_dev.clone())} else {None};
+                    return if dev_connector.result.is_ok() {Some(((&dev_list.sz_name_list[0]).to_string(), dev_connector.h_dev.clone()))} else {None};
                 }
             }
         }

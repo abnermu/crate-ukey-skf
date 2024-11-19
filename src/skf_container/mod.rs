@@ -147,13 +147,13 @@ impl ContainerManager {
     /// 获取可用容器句柄
     /// # 参数
     /// - `h_app` 应用句柄
-    pub fn get_container_available(h_app: APPLICATIONHANDLE) -> Option<CONTAINERHANDLE> {
+    pub fn get_container_available(h_app: APPLICATIONHANDLE) -> Option<(String, CONTAINERHANDLE)> {
         // 第一步枚举容器
         if let Some(container_list) = ContainerManager::list_containers(h_app.clone()) {
             if container_list.result.is_ok() && container_list.sz_container_list.len() > 0 {
                 // 第六步打开容器
                 if let Some(container_opener) = ContainerManager::open_container(h_app.clone(), &container_list.sz_container_list[0]) {
-                    return if container_opener.result.is_ok() {Some(container_opener.h_container.clone())} else {None};
+                    return if container_opener.result.is_ok() {Some(((&container_list.sz_container_list[0]).to_string(), container_opener.h_container.clone()))} else {None};
                 }
             }
         }
