@@ -20,6 +20,7 @@ pub use skf_file::*;
 pub use skf_container::*;
 pub use skf_alogrithm::*;
 
+#[allow(dead_code)]
 struct PinStore {
     dev_name: String,
     pin: String,
