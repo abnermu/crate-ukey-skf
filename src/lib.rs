@@ -74,7 +74,7 @@ fn get_cert_content(for_sign: bool) -> Option<Vec<u8>> {
     None
 }
 /// 获取证书序列号
-fn get_cert_serial_number(cert_bytes: &[u8]) -> Option<String> {
+pub fn get_cert_serial_number(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         return Some(StringUtil::read_to_hex(cert.raw_serial()));
     }
@@ -82,7 +82,7 @@ fn get_cert_serial_number(cert_bytes: &[u8]) -> Option<String> {
 }
 /// 获取证书有效期开始时间
 /// 格式化：yyyy/MM/dd HH:mm:ss
-fn get_cert_valid_from(cert_bytes: &[u8]) -> Option<String> {
+pub fn get_cert_valid_from(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         if let Some(valid_from) = chrono::DateTime::from_timestamp(cert.validity().not_before.timestamp(), 0) {
             return Some(valid_from.format("%Y/%m/%d %H:%M:%S").to_string());
@@ -92,7 +92,7 @@ fn get_cert_valid_from(cert_bytes: &[u8]) -> Option<String> {
 }
 /// 获取证书有效期截止时间
 /// 格式化：yyyy/MM/dd HH:mm:ss
-fn get_cert_valid_to(cert_bytes: &[u8]) -> Option<String> {
+pub fn get_cert_valid_to(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         if let Some(valid_from) = chrono::DateTime::from_timestamp(cert.validity().not_after.timestamp(), 0) {
             return Some(valid_from.format("%Y/%m/%d %H:%M:%S").to_string());
@@ -102,7 +102,7 @@ fn get_cert_valid_to(cert_bytes: &[u8]) -> Option<String> {
 }
 /// 获取证书使用者密钥标识符---SubjectKeyIdentifier
 /// - `oid` 2.5.29.14
-fn get_cert_subject_key_id(cert_bytes: &[u8]) -> Option<String> {
+pub fn get_cert_subject_key_id(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         if let Ok(Some(subject_key_id)) = cert.get_extension_unique(&asn1_rs::oid!(2.5.29.14)) {
             if let Ok((_bytes, asn1_subject_key_id)) = asn1_rs::Any::from_der(subject_key_id.value) {
@@ -114,7 +114,7 @@ fn get_cert_subject_key_id(cert_bytes: &[u8]) -> Option<String> {
 }
 /// 获取证书使用者名称
 /// 先取extension中oid为1.2.86.1的值，如果没有的话从subject中取common name并以@作为分割取第二个值
-fn get_cert_common_name(cert_bytes: &[u8]) -> Option<String> {
+pub fn get_cert_common_name(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         if let Ok(Some(cn)) = cert.get_extension_unique(&asn1_rs::oid!(1.2.86.1)) {
             if let Ok((_bytes, asn1_cn)) = asn1_rs::Any::from_der(cn.value) {
@@ -138,7 +138,7 @@ fn get_cert_common_name(cert_bytes: &[u8]) -> Option<String> {
     None
 }
 /// 获取证书颁发机构
-fn get_cert_issuer(cert_bytes: &[u8]) -> Option<String> {
+pub fn get_cert_issuer(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         return Some(cert.issuer().to_string());
     }
