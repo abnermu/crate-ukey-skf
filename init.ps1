@@ -28,7 +28,7 @@ if ($renamed) {
 }
 else {
     git remote rename origin gitlab
-    Write-Host "github远程仓库（origin）已重命名为gitlab。"
+    Write-Host "gitlab远程仓库（origin）已重命名为gitlab。"
 }
 
 $githubadded = Is-Gitlhub-Added
