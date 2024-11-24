@@ -41,7 +41,7 @@ impl AppManager {
             let mut pul_size: c_long = 255;
             let result = unsafe {fn_enum_app(h_dev, sz_app_name, &mut pul_size)};
             return Some(AppEnumResult {
-                sz_app_name: if ErrorCodes::is_ok(result) { unsafe {StringUtil::read_strings(sz_app_name, pul_size)} } else { vec![] },
+                sz_app_name: if ErrorCodes::is_ok(result) { unsafe {jyframe::StringUtil::read_c_strings(sz_app_name, pul_size)} } else { vec![] },
                 result: ErrorCodes::get_error(result)
             });
         }

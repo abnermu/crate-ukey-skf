@@ -73,7 +73,7 @@ impl ContainerManager {
             let mut pul_size: c_long = 255;
             let result = unsafe {fn_enum_container(h_app, sz_container_name, &mut pul_size)};
             return Some(EnumContainerResult {
-                sz_container_list: if ErrorCodes::is_ok(result) { unsafe {StringUtil::read_strings(sz_container_name, pul_size)} } else { vec![] },
+                sz_container_list: if ErrorCodes::is_ok(result) { unsafe {jyframe::StringUtil::read_c_strings(sz_container_name, pul_size)} } else { vec![] },
                 result: ErrorCodes::get_error(result),
             });
         }

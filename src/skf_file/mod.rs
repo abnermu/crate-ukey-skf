@@ -26,7 +26,7 @@ impl FileManager {
             let mut pul_size: c_long = 255;
             let result = unsafe {fn_enum_files(h_app, sz_file_list, &mut pul_size)};
             return Some(FileEnumResult {
-                sz_file_list: if ErrorCodes::is_ok(result) { unsafe {StringUtil::read_strings(sz_file_list, pul_size)} } else { vec![] },
+                sz_file_list: if ErrorCodes::is_ok(result) { unsafe {jyframe::StringUtil::read_c_strings(sz_file_list, pul_size)} } else { vec![] },
                 result: ErrorCodes::get_error(result),
             });
         }

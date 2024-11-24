@@ -1,75 +1,23 @@
-use std::{ffi::CStr, io::Write, os::raw::c_long};
+use std::io::Write;
 use libloading::{Library, Symbol};
 use asn1_rs::{FromDer, ToDer};
-use super::LPSTR;
-
-/// 字符串操作工具类
-pub struct StringUtil;
-impl StringUtil {
-    /// 依赖的dll名称：JKLX_UKEY_GMAPI.dll
-    /// 
-    /// 位于C:\\Windows\\System32[SysWOW64]下
-    pub const LIB_NAME: &str = "JKLX_UKEY_GMAPI.dll";
-
-    /// 根据长度读取多个字符串的分组
-    /// # 参数
-    /// - `ptr` 字符串指针
-    /// - `total_len` 指针指向的内存长度
-    pub unsafe fn read_strings(ptr: LPSTR, total_len: c_long) -> Vec<String> {
-        let mut strings: Vec<String> = Vec::new();
-        let mut current_start = 0;
-        for i in 0..total_len {
-            // 如果遇到\0 提取字符串
-            if *ptr.offset(i as isize) == 0 {
-                if current_start < i {
-                    let slice = std::slice::from_raw_parts(ptr.offset(current_start as isize), (i - current_start) as usize);
-                    if let Ok(sub_str) = CStr::from_ptr(slice.as_ptr()).to_str() {
-                        // println!("sub str from {} to {} / {}: {}", current_start, i, total_len, sub_str);
-                        strings.push(sub_str.to_string());
-                    }
-                }
-                current_start = i + 1;
-            }
-        }
-        strings
-    }
-
-    /// 读单个字符串（以\0结束）
-    /// # 参数
-    /// - `ptr` 字符串指针
-    pub unsafe fn read_string(ptr: LPSTR) -> String {
-        match CStr::from_ptr(ptr).to_str() {
-            Ok(str) => str.to_string(),
-            Err(..) => String::from(""),
-        }
-    }
-
-    /// 根据长度读取字节数组
-    /// # 参数
-    /// - `ptr` 内存指针
-    /// - `total_len` 指针指向的内存长度
-    pub unsafe fn read_bytes(ptr: *mut u8, total_len: c_long) -> Vec<u8> {
-        return Vec::from_raw_parts(ptr, total_len as usize, total_len as usize);
-    }
-
-    /// 读取byte数组为hex
-    pub fn read_to_hex(bytes: &[u8]) -> String {
-        return bytes.to_vec().iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
-    }
-}
 
 #[warn(static_mut_refs)]
 pub static mut SKF: Option<Library> = None;
 /// dll操作工具类
 pub struct LibUtil;
 impl LibUtil {
+    /// 依赖的dll名称：JKLX_UKEY_GMAPI.dll
+    /// 
+    /// 位于C:\\Windows\\System32[SysWOW64]下
+    pub const LIB_NAME: &str = "JKLX_UKEY_GMAPI.dll";
     /// 加载dll（全局仅加载一次）
     pub unsafe fn load_lib() {
         if SKF.is_none() {
-            SKF = match Library::new(StringUtil::LIB_NAME) {
+            SKF = match Library::new(LibUtil::LIB_NAME) {
                 Ok(lib) => Some(lib),
                 Err(err) => {
-                    println!("error occured when load the library【{}】: {}", StringUtil::LIB_NAME, err);
+                    println!("error occured when load the library【{}】: {}", LibUtil::LIB_NAME, err);
                     None
                 },
             };

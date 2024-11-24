@@ -76,7 +76,7 @@ fn get_cert_content(for_sign: bool) -> Option<Vec<u8>> {
 /// 获取证书序列号
 pub fn get_cert_serial_number(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
-        return Some(StringUtil::read_to_hex(cert.raw_serial()));
+        return Some(jyframe::StringUtil::bytes_to_hex(cert.raw_serial()));
     }
     None
 }
@@ -106,7 +106,7 @@ pub fn get_cert_subject_key_id(cert_bytes: &[u8]) -> Option<String> {
     if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
         if let Ok(Some(subject_key_id)) = cert.get_extension_unique(&asn1_rs::oid!(2.5.29.14)) {
             if let Ok((_bytes, asn1_subject_key_id)) = asn1_rs::Any::from_der(subject_key_id.value) {
-                return Some(StringUtil::read_to_hex(asn1_subject_key_id.data))
+                return Some(jyframe::StringUtil::bytes_to_hex(asn1_subject_key_id.data))
             }
         }
     }

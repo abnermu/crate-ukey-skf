@@ -81,7 +81,7 @@ impl DeviceManager {
             let eventen: WaitEvent = if event == 1 { WaitEvent::DEVIN } else if event == 2 { WaitEvent::DEVOUT } else { WaitEvent::UNKNOWN};
             let result: ErrorDefine = ErrorCodes::get_error(result);
             return Some(WaitResult {
-                dev_name: if result.is_ok() && eventen != WaitEvent::UNKNOWN { unsafe{StringUtil::read_strings(dev_name, dev_name_len).join(";")} } else { String::from("") },
+                dev_name: if result.is_ok() && eventen != WaitEvent::UNKNOWN { unsafe{jyframe::StringUtil::read_c_strings(dev_name, dev_name_len).join(";")} } else { String::from("") },
                 event: eventen,
                 result,
             });
@@ -106,7 +106,7 @@ impl DeviceManager {
             let mut pul_size: c_long = 255;
             let result = unsafe {fn_enum_dev(if present {1} else {0}, sz_name_list, &mut pul_size)};
             return Some(DevEnumResult {
-                sz_name_list: if ErrorCodes::is_ok(result) { unsafe {StringUtil::read_strings(sz_name_list, pul_size)} } else { vec![] },
+                sz_name_list: if ErrorCodes::is_ok(result) { unsafe {jyframe::StringUtil::read_c_strings(sz_name_list, pul_size)} } else { vec![] },
                 result: ErrorCodes::get_error(result),
             });
         }
