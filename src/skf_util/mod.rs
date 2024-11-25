@@ -1,6 +1,7 @@
 use std::io::Write;
 use libloading::{Library, Symbol};
 use asn1_rs::{FromDer, ToDer};
+use log as logger;
 
 #[warn(static_mut_refs)]
 pub static mut SKF: Option<Library> = None;
@@ -17,14 +18,14 @@ impl LibUtil {
             SKF = match Library::new(LibUtil::LIB_NAME) {
                 Ok(lib) => Some(lib),
                 Err(err) => {
-                    println!("error occured when load the library【{}】: {}", LibUtil::LIB_NAME, err);
+                    logger::error!("error occured when load the library【{}】: {}", LibUtil::LIB_NAME, err);
                     None
                 },
             };
         }
-        // else {
-        //     println!("library has been loaded, no need to reload.");
-        // }
+        else {
+            logger::info!("library has been loaded, no need to reload.");
+        }
     }
 
     /// 获取全局dll加载对象的引用
@@ -44,7 +45,7 @@ impl LibUtil {
                 match lib.get::<T>(func_name) {
                     Ok(cfn) => Some(cfn),
                     Err(err) => {
-                        println!("error occured when get function【{:?}】: {}", func_name, err);
+                        logger::error!("error occured when get function【{:?}】: {}", func_name, err);
                         None
                     },
                 }
@@ -147,20 +148,25 @@ impl Asn1Util {
                 Err(err) => Err(err),
             };
         });
-        if let Ok((_bytes, (low_bi, high_bi, mac_oc, org_oc))) = seq_obj {
-            let low_bytes = low_bi.any().as_bytes().to_vec();
-            let high_bytes = high_bi.any().as_bytes().to_vec();
-            let mac_bytes = mac_oc.as_cow().to_vec();
-            let org_bytes = org_oc.as_cow().to_vec();
-            // 低位和高位每个的长度和必须是64
-            let low_pre: Vec<u8> = vec![0; 64 - low_bytes.len()];
-            let high_pre: Vec<u8> = vec![0; 64 - high_bytes.len()];
-            let org_len: Vec<u8> = vec![org_bytes.len() as u8];
-            let org_pre: Vec<u8> = vec![0; 3];
-
-            return Some([&low_pre[..], &low_bytes[..], &high_pre[..], &high_bytes[..], &mac_bytes[..], &org_len[..], &org_pre[..], &org_bytes[..]].concat());
+        match seq_obj {
+            Ok((_bytes, (low_bi, high_bi, mac_oc, org_oc))) => {
+                let low_bytes = low_bi.any().as_bytes().to_vec();
+                let high_bytes = high_bi.any().as_bytes().to_vec();
+                let mac_bytes = mac_oc.as_cow().to_vec();
+                let org_bytes = org_oc.as_cow().to_vec();
+                // 低位和高位每个的长度和必须是64
+                let low_pre: Vec<u8> = vec![0; 64 - low_bytes.len()];
+                let high_pre: Vec<u8> = vec![0; 64 - high_bytes.len()];
+                let org_len: Vec<u8> = vec![org_bytes.len() as u8];
+                let org_pre: Vec<u8> = vec![0; 3];
+    
+                return Some([&low_pre[..], &low_bytes[..], &high_pre[..], &high_bytes[..], &mac_bytes[..], &org_len[..], &org_pre[..], &org_bytes[..]].concat());
+            },
+            Err(err) => {
+                logger::error!("error occured when convert the asn1 bytes to sm2 bytes：{}", err);
+                return None;
+            }
         }
-        None
     }
     /// sm2加密结果转换为c1c3c2的标准编码
     pub fn sm2enc_to_c1c3c2(sm2_result: Vec<u8>) -> Option<Vec<u8>> {
@@ -186,6 +192,9 @@ impl Asn1Util {
             let tag_vec: Vec<u8> = vec![0x04];
             return Some([&tag_vec[..], &low_pre[..], low_bytes, &high_pre[..], high_bytes, mac_bytes, org_bytes].concat());
         }
+        else {
+            logger::error!("the sm2 bytes need to be longer than 164.");
+        }
         None
     }
     /// c1c3c2标准编码转换为sm2加密结果
@@ -209,6 +218,7 @@ impl Asn1Util {
             }
             // 最小长度值发生了变化，再判断一次
             if c1c3c2_result.len() < min_bytes_len {
+                logger::error!("the c1c3c2 bytes need to be longer than {}.", min_bytes_len);
                 return None;
             }
             low_bytes.extend_from_slice(&c1c3c2_result[start_idx..(start_idx + 32)]);
@@ -221,6 +231,7 @@ impl Asn1Util {
             }
             // 最小长度值发生了变化，再判断一次
             if c1c3c2_result.len() < min_bytes_len {
+                logger::error!("the c1c3c2 bytes need to be longer than {}.", min_bytes_len);
                 return None;
             }
             high_bytes.extend_from_slice(&c1c3c2_result[start_idx..(start_idx + 32)]);
@@ -233,6 +244,9 @@ impl Asn1Util {
                 *org_len_first = org_bytes.len() as u8;
             }
             return Some([&low_pre[..], &low_bytes[..], &high_pre[..], &high_bytes[..], &mac_bytes[..], &org_len[..], &org_bytes[..]].concat());
+        }
+        else {
+            logger::error!("the c1c3c2 bytes need to be longer than {}.", min_bytes_len);
         }
         None
     }
@@ -284,7 +298,10 @@ impl Asn1Util {
         if let Ok((_bytes, seq_cert_content)) = asn1_rs::Sequence::from_der(&cert_bytes) {
             let cert_len = match seq_cert_content.to_der_len() {
                 Ok(len) => len,
-                Err(..) => 0,
+                Err(err) => {
+                    logger::error!("error occured when calculate the cert content length：{}", err);
+                    0
+                },
             };
             let _ = asn1_rs::Header::new(asn1_rs::Class::ContextSpecific, true, asn1_rs::Tag(0), asn1_rs::Length::Definite(cert_len)).write_der(&mut vec_body);
             let _ = seq_cert_content.write_der(&mut vec_body);
@@ -344,9 +361,14 @@ impl Asn1Util {
         let _ = asn1_rs::Integer::new(&[&r_pre[..], r_bytes].concat()[..]).write_der(&mut vec_signature);
         let _ = asn1_rs::Integer::new(&[&s_pre[..], s_bytes].concat()[..]).write_der(&mut vec_signature);
         let seq_signature = asn1_rs::Sequence::new(vec_signature.into());
-        if let Ok(sign_asn1_bytes) = seq_signature.to_der_vec() {
-            let oct_signature = asn1_rs::OctetString::new(&sign_asn1_bytes);
-            let _ = oct_signature.write_der(&mut vec_sign_info_container);
+        match seq_signature.to_der_vec() {
+            Ok(sign_asn1_bytes) => {
+                let oct_signature = asn1_rs::OctetString::new(&sign_asn1_bytes);
+                let _ = oct_signature.write_der(&mut vec_sign_info_container);
+            },
+            Err(err) => {
+                logger::error!("error occured when convert the signature：{}", err);
+            }
         }
         // 签名编码容器 - body - 签名信息【写入】
         let seq_sign_info_container = asn1_rs::Sequence::new(vec_sign_info_container.into());
@@ -358,15 +380,21 @@ impl Asn1Util {
         // 签名编码容器 - body-header + body 写入（因为header里的长度依赖于body，所以最后写入）
         let body_len = match seq_body.to_der_len() {
             Ok(len) => len,
-            Err(..) => 0,
+            Err(err) => {
+                logger::error!("error occured when calculate the body length：{}", err);
+                0
+            },
         };
         let _ = asn1_rs::Header::new(asn1_rs::Class::ContextSpecific, true, asn1_rs::Tag(0), asn1_rs::Length::Definite(body_len)).write_der(&mut vec_wrapper);
         let _ = seq_body.write_der(&mut vec_wrapper);
         let seq_wrapper = asn1_rs::Sequence::new(vec_wrapper.into());
-        if let Ok(seq_encode) = seq_wrapper.to_der_vec() {
-            return Some(seq_encode.clone());
+        match seq_wrapper.to_der_vec() {
+            Ok(seq_encode) => Some(seq_encode.clone()),
+            Err(err) => {
+                logger::error!("error occured when convert the p7hashed asn1 signature：{}", err);
+                None
+            }
         }
-        None
     }
     /// p7hash_to_ecc_sign内部方法：循环数组内容，取其最后一个元素的bytes
     fn read_last_item_in_arr(mut content_bytes: Vec<u8>) -> Option<Vec<u8>> {
@@ -378,7 +406,8 @@ impl Asn1Util {
                         Ok(bytes_vec) => {
                             return Some(bytes_vec.clone());
                         }
-                        Err(..) => {
+                        Err(err) => {
+                            logger::error!("error occured when convert the asn1 item：{}", err);
                             break;
                         }
                     };
@@ -407,7 +436,8 @@ impl Asn1Util {
                     Ok((_bytes, last_bytes)) => {
                         return Some(last_bytes.clone());
                     },
-                    Err(_) => {
+                    Err(err) => {
+                        logger::error!("error occured when read the last item in sequence：{}", err);
                         return None;
                     },
                 }
@@ -422,7 +452,8 @@ impl Asn1Util {
                     Ok((_bytes, last_bytes)) => {
                         return Some(last_bytes.clone());
                     },
-                    Err(_) => {
+                    Err(err) => {
+                        logger::error!("error occured when read the last item in set：{}", err);
                         return None;
                     },
                 }
@@ -434,37 +465,52 @@ impl Asn1Util {
         // 读第一层的ctx_header元素
         if let Some(last_bytes) = Asn1Util::read_last_item_in_sequence(p7bytes.clone(), EnArrType::Asn1Sequence) {
             // ctx_header下的sequence元素
-            if let Ok((last_bytes, _header)) = asn1_rs::Header::from_der(&last_bytes) {
-                // 读sequence下的最后一个元素（里边有签名信息）,是一个set元素
-                if let Some(last_bytes) = Asn1Util::read_last_item_in_sequence(last_bytes.to_vec(), EnArrType::Asn1Sequence) {
-                    // 读取set下的签名信息容器，是一个sequence
-                    if let Some(last_bytes) = Asn1Util::read_last_item_in_sequence(last_bytes.clone(), EnArrType::Asn1Set) {
-                        // 读sequence下的签名值，是一个octetstring
-                        if let Some(last_bytes) = Asn1Util::read_last_item_in_sequence(last_bytes.clone(), EnArrType::Asn1Sequence) {
-                            // 读octetstring里的byte数组内容
-                            if let Ok((_last_bytes, sign_oct)) = asn1_rs::OctetString::from_der(&last_bytes) {
-                                // 解析最终的签名sequence序列，并返回其中的r和s
-                                if let Ok((_bytes, (r_bi, s_bi))) = asn1_rs::Sequence::from_der_and_then(&sign_oct.as_cow().to_vec(), |bytes| {
-                                    match asn1_rs::Integer::from_der(bytes) {
-                                        Ok((bytes, r_bi)) => {
+            match asn1_rs::Header::from_der(&last_bytes) {
+                Ok((last_bytes, _header)) => {
+                    // 读sequence下的最后一个元素（里边有签名信息）,是一个set元素
+                    if let Some(last_bytes) = Asn1Util::read_last_item_in_sequence(last_bytes.to_vec(), EnArrType::Asn1Sequence) {
+                        // 读取set下的签名信息容器，是一个sequence
+                        if let Some(last_bytes) = Asn1Util::read_last_item_in_sequence(last_bytes.clone(), EnArrType::Asn1Set) {
+                            // 读sequence下的签名值，是一个octetstring
+                            if let Some(last_bytes) = Asn1Util::read_last_item_in_sequence(last_bytes.clone(), EnArrType::Asn1Sequence) {
+                                // 读octetstring里的byte数组内容
+                                match asn1_rs::OctetString::from_der(&last_bytes) {
+                                    Ok((_last_bytes, sign_oct)) => {
+                                        // 解析最终的签名sequence序列，并返回其中的r和s
+                                        match asn1_rs::Sequence::from_der_and_then(&sign_oct.as_cow().to_vec(), |bytes| {
                                             match asn1_rs::Integer::from_der(bytes) {
-                                                Ok((bytes, s_bi)) => Ok((bytes, (r_bi, s_bi))),
+                                                Ok((bytes, r_bi)) => {
+                                                    match asn1_rs::Integer::from_der(bytes) {
+                                                        Ok((bytes, s_bi)) => Ok((bytes, (r_bi, s_bi))),
+                                                        Err(err) => Err(err),
+                                                    }
+                                                },
                                                 Err(err) => Err(err),
                                             }
-                                        },
-                                        Err(err) => Err(err),
+                                        }) {
+                                            Ok((_bytes, (r_bi, s_bi))) => {
+                                                let r_bytes = r_bi.any().as_bytes().to_vec();
+                                                let s_bytes = s_bi.any().as_bytes().to_vec();
+                                                // 低位和高位分别是两个长度64的byte数组
+                                                let r_pre: Vec<u8> = vec![0; 64 - r_bytes.len()];
+                                                let s_pre: Vec<u8> = vec![0; 64 - s_bytes.len()];
+                                                return Some([&r_pre[..], &r_bytes[..], &s_pre[..], &s_bytes[..]].concat());
+                                            },
+                                            Err(err) => {
+                                                logger::error!("error occured when read final signature bytes: {}", err);
+                                            }
+                                        }
+                                    },
+                                    Err(err) => {
+                                        logger::error!("p7hashed signature with wrong asn1 struct：{}", err);
                                     }
-                                }) {
-                                    let r_bytes = r_bi.any().as_bytes().to_vec();
-                                    let s_bytes = s_bi.any().as_bytes().to_vec();
-                                    // 低位和高位分别是两个长度64的byte数组
-                                    let r_pre: Vec<u8> = vec![0; 64 - r_bytes.len()];
-                                    let s_pre: Vec<u8> = vec![0; 64 - s_bytes.len()];
-                                    return Some([&r_pre[..], &r_bytes[..], &s_pre[..], &s_bytes[..]].concat());
                                 }
                             }
                         }
                     }
+                },
+                Err(err) => {
+                    logger::error!("p7hashed signature with wrong asn1 struct：{}", err);
                 }
             }
         }

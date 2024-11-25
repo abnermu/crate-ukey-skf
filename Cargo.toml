@@ -10,5 +10,6 @@ chrono = "0.4.38"
 eframe = "0.29.1"
 jyframe = { version = "0.1.0", path = "../crate-frame" }
 libloading = "0.8.5"
+log = "0.4.22"
 screen_size = "0.1.0"
 x509-parser = "0.16.0"

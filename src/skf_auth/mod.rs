@@ -1,5 +1,6 @@
 use std::{ffi::CString, os::raw::c_long, sync::{Arc, Mutex}};
 use eframe::egui;
+use log as logger;
 use super::*;
 
 /// pin码校验结果
@@ -215,15 +216,23 @@ impl AuthManager {
     /// - `pin` pin值
     pub fn check_pin(h_app: APPLICATIONHANDLE, pin: &str) -> Option<CheckPinResult> {
         if let Some(ref fn_check_pin) = unsafe {LibUtil::load_fun_in_dll::<SKFVerifyPIN>(FN_NAME_SKF_VERIFYPIN)} {
-            if let Ok(pin_cstr) = CString::new(pin) {
-                let sz_pin: SLPSTR = pin_cstr.as_ptr();
-                let mut retry_count: c_long = 0;
-                let result = unsafe {fn_check_pin(h_app, 1 as c_long, sz_pin, &mut retry_count)};
-                return Some(CheckPinResult {
-                    retry_count,
-                    result: ErrorCodes::get_error(result),
-                });
+            match CString::new(pin) {
+                Ok(pin_cstr) => {
+                    let sz_pin: SLPSTR = pin_cstr.as_ptr();
+                    let mut retry_count: c_long = 0;
+                    let result = unsafe {fn_check_pin(h_app, 1 as c_long, sz_pin, &mut retry_count)};
+                    return Some(CheckPinResult {
+                        retry_count,
+                        result: ErrorCodes::get_error(result),
+                    });
+                },
+                Err(err) => {
+                    logger::error!("error occured when convert pin to c-string: {}", err);
+                }
             }
+        }
+        else {
+            logger::warn!("load check pin function failed");
         }
         None
     }
@@ -235,9 +244,14 @@ impl AuthManager {
         let window_height: f32 = 150.0;
         let mut pos_x: f32 = window_width;
         let mut pos_y: f32 = window_height;
-        if let Ok((scr_width, scr_height)) = screen_size::get_primary_screen_size() {
-            pos_x = (scr_width as f32 - window_width) / 2.0;
-            pos_y = (scr_height as f32 - window_height) / 2.0;
+        match screen_size::get_primary_screen_size() {
+            Ok((scr_width, scr_height)) => {
+                pos_x = (scr_width as f32 - window_width) / 2.0;
+                pos_y = (scr_height as f32 - window_height) / 2.0;
+            },
+            Err(err) => {
+                logger::error!("error occured when get the screen size: {}", err);
+            }
         }
         let native_options = eframe::NativeOptions{
             viewport: egui::ViewportBuilder::default()
@@ -255,13 +269,23 @@ impl AuthManager {
             ..Default::default()
         };
         let check_result = Arc::new(Mutex::new(false));
-        if let Ok(()) = eframe::run_native(
+        match eframe::run_native(
             "验证Ukey用户口令", 
             native_options, 
             Box::new(|cc| Ok(Box::new(CheckPinDialog::new(cc, check_result.clone()))))
         ) {
-            if let Ok(valid) = check_result.lock() {
-                return valid.to_owned();
+            Ok(()) => {
+                match check_result.lock() {
+                    Ok(valid) => {
+                        return valid.to_owned();
+                    },
+                    Err(err) => {
+                        logger::error!("error occured when get the boxed check_result: {}", err);
+                    }
+                }
+            },
+            Err(err) => {
+                logger::error!("error occured when open the check pin dialog: {}", err);
             }
         }
         false

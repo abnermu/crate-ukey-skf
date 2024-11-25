@@ -1,5 +1,6 @@
 use std::os::raw::{c_int, c_long};
 use base64::Engine;
+use log as logger;
 use super::*;
 
 /// 生成随机数结果
@@ -91,6 +92,9 @@ impl SecretService {
                 result: ErrorCodes::get_error(result),
             });
         }
+        else {
+            logger::warn!("load get random function failed");
+        }
         None
     }
     /// 导出公钥
@@ -105,6 +109,9 @@ impl SecretService {
             if ErrorCodes::is_ok(result) && key_len > 0 {
                 key_blob.truncate(key_len as usize);
             }
+            else {
+                logger::error!("export public key failed");
+            }
             let mut rtn = PubKeyExResult {
                 key: key_blob.clone(),
                 key64: String::from(""),
@@ -112,6 +119,9 @@ impl SecretService {
             };
             rtn.key64 = base64::engine::general_purpose::STANDARD.encode(&rtn.key);
             return Some(rtn);
+        }
+        else {
+            logger::warn!("load export public key function failed");
         }
         None
     }
@@ -138,7 +148,10 @@ impl SecretService {
                 String::from("")
             };
             return Some(rtn);
-       }
+        }
+        else {
+            logger::warn!("load ecc sign function failed");
+        }
         None
     }
     /// ECC签名，仅处理base64字符串
@@ -147,8 +160,20 @@ impl SecretService {
     /// - `data` 原文base64
     /// - `cert` 证书base64
     pub fn ecc_sign_data(h_container: CONTAINERHANDLE, data: &str, cert: &str) -> Option<ECCSignResult> {
-        if let (Ok(data_bytes), Ok(cert_bytes)) = (base64::engine::general_purpose::STANDARD.decode(data), base64::engine::general_purpose::STANDARD.decode(cert)) {
-            return SecretService::ecc_sign_bytes(h_container, data_bytes, cert_bytes);
+        match base64::engine::general_purpose::STANDARD.decode(data) {
+            Ok(data_bytes) => {
+                match base64::engine::general_purpose::STANDARD.decode(cert) {
+                    Ok(cert_bytes) => {
+                        return SecretService::ecc_sign_bytes(h_container, data_bytes, cert_bytes);
+                    },
+                    Err(err) => {
+                        logger::error!("error occured when ecc sign to convert the cert from base64 to bytes: {}", err);
+                    }
+                }
+            },
+            Err(err) => {
+                logger::error!("error occured when ecc sign to convert the data from base64 to bytes: {}", err);
+            }
         }
         None
     }
@@ -163,6 +188,9 @@ impl SecretService {
             let result = unsafe {fn_verify(h_dev, pubkey.as_ptr(), data_bytes.as_ptr(), data_bytes.len() as c_long, sign_bytes.as_ptr())};
             return Some(ErrorCodes::get_error(result));
         }
+        else {
+            logger::warn!("load ecc verify function failed");
+        }
         None
     }
     /// ECC验签，仅处理base64字符串【pkcs7-hash asn1编码的】
@@ -172,9 +200,24 @@ impl SecretService {
     /// - `signature` 签名值base64
     /// - `pubkey` 公钥byte数组
     pub fn ecc_verify(h_dev: DEVHANDLE, data: &str, signature: &str, pubkey: Vec<u8>) -> Option<ErrorDefine> {
-        if let (Ok(data_bytes), Ok(sign_bytes)) = (base64::engine::general_purpose::STANDARD.decode(data), base64::engine::general_purpose::STANDARD.decode(signature)) {
-            if let Some(sign_bytes_primitive) = Asn1Util::p7hash_to_ecc_sign(sign_bytes.clone()) {
-                return SecretService::ecc_verify_bytes(h_dev, data_bytes, sign_bytes_primitive, pubkey);
+        match base64::engine::general_purpose::STANDARD.decode(data) {
+            Ok(data_bytes) => {
+                match base64::engine::general_purpose::STANDARD.decode(signature) {
+                    Ok(sign_bytes) => {
+                        if let Some(sign_bytes_primitive) = Asn1Util::p7hash_to_ecc_sign(sign_bytes.clone()) {
+                            return SecretService::ecc_verify_bytes(h_dev, data_bytes, sign_bytes_primitive, pubkey);
+                        }
+                        else {
+                            logger::error!("convert p7hashed signature to primitive bytes failed");
+                        }
+                    },
+                    Err(err) => {
+                        logger::error!("error occured when ecc verify and convert the signature from base64 to bytes: {}", err);
+                    }
+                }
+            },
+            Err(err) => {
+                logger::error!("error occured when ecc verify and convert the data from base64 to bytes: {}", err);
             }
         }
         None
@@ -212,6 +255,9 @@ impl SecretService {
             };
             return Some(rtn);
         }
+        else {
+            logger::warn!("load ecc encrypt function failed");
+        }
         None
     }
     /// ECC解密（直接操作byte数组）
@@ -226,12 +272,18 @@ impl SecretService {
             if ErrorCodes::is_ok(result) && dec_len > 0 {
                 decrypted.truncate(dec_len as usize);
             }
+            else {
+                logger::error!("ecc decrypt failed");
+            }
             return Some(ECCDecryptResult {
                 data: base64::engine::general_purpose::STANDARD.encode(&data),
                 decrypted: decrypted.clone(),
                 decryptedplain: if let Ok(dec_plain) = String::from_utf8(decrypted.clone()) {dec_plain} else {String::from("")},
                 result: ErrorCodes::get_error(result),
             });
+        }
+        else {
+            logger::warn!("load ecc decrypt function failed");
         }
         None
     }
@@ -240,8 +292,13 @@ impl SecretService {
     /// - `h_container` 容器打开句柄
     /// - `data` 加密值base64
     pub fn ecc_decrypt_primitive(h_container: CONTAINERHANDLE, data: &str) -> Option<ECCDecryptResult> {
-        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data) {
-            return SecretService::ecc_decrypt_bytes(h_container, bytes.clone());
+        match base64::engine::general_purpose::STANDARD.decode(data) {
+            Ok(bytes) => {
+                return SecretService::ecc_decrypt_bytes(h_container, bytes.clone());
+            },
+            Err(err) => {
+                logger::error!("error occured when decode the data from base64 to bytes: {}", err);
+            }
         }
         None
     }
@@ -250,9 +307,17 @@ impl SecretService {
     /// - `h_container` 容器打开句柄
     /// - `data` 加密值base64
     pub fn ecc_decrypt_c1c3c2(h_container: CONTAINERHANDLE, data: &str) -> Option<ECCDecryptResult> {
-        if let Ok(c1c3c2_bytes) = base64::engine::general_purpose::STANDARD.decode(data) {
-            if let Some(bytes) = Asn1Util::c1c3c2_to_sm2enc(c1c3c2_bytes) {
-                return SecretService::ecc_decrypt_bytes(h_container, bytes.clone());
+        match base64::engine::general_purpose::STANDARD.decode(data) {
+            Ok(c1c3c2_bytes) => {
+                if let Some(bytes) = Asn1Util::c1c3c2_to_sm2enc(c1c3c2_bytes) {
+                    return SecretService::ecc_decrypt_bytes(h_container, bytes.clone());
+                }
+                else {
+                    logger::warn!("convert c1c3c2 style encrypted data to bytes failed");
+                }
+            },
+            Err(err) => {
+                logger::error!("error occured when convert the data from base64 to bytes: {}", err);
             }
         }
         None
@@ -262,9 +327,17 @@ impl SecretService {
     /// - `h_container` 容器打开句柄
     /// - `data` 加密值base64
     pub fn ecc_decrypt_asn1(h_container: CONTAINERHANDLE, data: &str) -> Option<ECCDecryptResult> {
-        if let Ok(asn1_bytes) = base64::engine::general_purpose::STANDARD.decode(data) {
-            if let Some(bytes) = Asn1Util::asn1_to_sm2enc(asn1_bytes.clone()) {
-                return SecretService::ecc_decrypt_bytes(h_container, bytes.clone());
+        match base64::engine::general_purpose::STANDARD.decode(data) {
+            Ok(asn1_bytes) => {
+                if let Some(bytes) = Asn1Util::asn1_to_sm2enc(asn1_bytes.clone()) {
+                    return SecretService::ecc_decrypt_bytes(h_container, bytes.clone());
+                }
+                else {
+                    logger::warn!("convert asn1 style encrypted data to bytes failed");
+                }
+            },
+            Err(err) => {
+                logger::error!("error occured when convert the data from base64 to bytes: {}", err);
             }
         }
         None
@@ -280,13 +353,22 @@ impl SecretService {
                 return Some(dec_asn1);
             }
         }
+        else {
+            logger::info!("try to do asn1 style decrypt failed, will try c1c3c2 next");
+        }
         if let Some(dec_c1c3c2) = SecretService::ecc_decrypt_c1c3c2(h_container, data) {
             if dec_c1c3c2.result.is_ok() {
                 return Some(dec_c1c3c2);
             }
         }
+        else {
+            logger::info!("try to do c1c3c2 style decrypt failed, will try primitive next");
+        }
         if let Some(dec_primitive) = SecretService::ecc_decrypt_primitive(h_container, data) {
             return Some(dec_primitive);
+        }
+        else {
+            logger::info!("try to do primitive style decrypt failed");
         }
         None
     }

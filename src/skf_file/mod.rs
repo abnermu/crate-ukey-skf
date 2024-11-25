@@ -1,4 +1,5 @@
 use std::os::raw::{c_char, c_long};
+use log as logger;
 use super::*;
 
 /// 枚举文件列表结果
@@ -29,6 +30,9 @@ impl FileManager {
                 sz_file_list: if ErrorCodes::is_ok(result) { unsafe {jyframe::StringUtil::read_c_strings(sz_file_list, pul_size)} } else { vec![] },
                 result: ErrorCodes::get_error(result),
             });
+        }
+        else {
+            logger::warn!("load list files function failed");
         }
         None
     }

@@ -1,4 +1,5 @@
 use std::{ffi::CString, os::raw::{c_long, c_char, c_int}};
+use log as logger;
 use super::*;
 
 /// 等待插拔事件类型
@@ -86,6 +87,9 @@ impl DeviceManager {
                 result,
             });
         }
+        else {
+            logger::warn!("load wait device function failed");
+        }
         None
     }
     /// 取消等待设备插拔
@@ -93,6 +97,9 @@ impl DeviceManager {
         if let Some(ref fn_cancel_wait_dev) = unsafe {LibUtil::load_fun_in_dll::<SKFCancelWaitForDevEvent>(FN_NAME_SKF_CANCEL_WAIT_FOR_DEV_EVENT)} {
             let result = unsafe {fn_cancel_wait_dev()};
             return Some(ErrorCodes::get_error(result));
+        }
+        else {
+            logger::warn!("load cancel wait device function failed");
         }
         None
     }
@@ -110,6 +117,9 @@ impl DeviceManager {
                 result: ErrorCodes::get_error(result),
             });
         }
+        else {
+            logger::warn!("load list devices function failed");
+        }
         None
     }
     /// 连接设备
@@ -117,16 +127,24 @@ impl DeviceManager {
     /// - `dev_name` 设备号
     pub fn connect_dev(dev_name: &str) -> Option<DevConnectResult> {
         if let Some(ref fn_connect_dev) = unsafe {LibUtil::load_fun_in_dll::<SKFConnectDev>(FN_NAME_SKF_CONNECTDEV)} {
-            if let Ok(sz_name_cstr) = CString::new(dev_name) {
-                let sz_name: SLPSTR = sz_name_cstr.as_ptr();
-                let ph_dev: *mut DEVHANDLE = &mut std::ptr::null_mut();
-                let result = unsafe {fn_connect_dev(sz_name, ph_dev)};
-                return Some(DevConnectResult {
-                    dev_name: dev_name.to_string(),
-                    h_dev: unsafe {*ph_dev},
-                    result: ErrorCodes::get_error(result),
-                });
+            match CString::new(dev_name) {
+                Ok(sz_name_cstr) => {
+                    let sz_name: SLPSTR = sz_name_cstr.as_ptr();
+                    let ph_dev: *mut DEVHANDLE = &mut std::ptr::null_mut();
+                    let result = unsafe {fn_connect_dev(sz_name, ph_dev)};
+                    return Some(DevConnectResult {
+                        dev_name: dev_name.to_string(),
+                        h_dev: unsafe {*ph_dev},
+                        result: ErrorCodes::get_error(result),
+                    });
+                },
+                Err(err) => {
+                    logger::error!("error occured when convert the device name to c-string: {}", err);
+                }
             }
+        }
+        else {
+            logger::warn!("load connect device function failed");
         }
         None
     }
@@ -138,6 +156,9 @@ impl DeviceManager {
             let result = unsafe {fn_disconnect_dev(handle)};
             return Some(ErrorCodes::get_error(result));
         }
+        else {
+            logger::warn!("load the disconnect device function failed");
+        }
         None
     }
     /// 获取设备状态 0不可用；1可用
@@ -145,16 +166,24 @@ impl DeviceManager {
     /// - `dev_name` 设备号
     pub fn get_dev_state(dev_name: &str) -> Option<DevStateResult> {
         if let Some(ref fn_get_dev_state) = unsafe {LibUtil::load_fun_in_dll::<SKFGetDevState>(FN_NAME_SKF_GETDEVSTATE)} {
-            if let Ok(sz_dev_name_cstr) = CString::new(dev_name) {
-                let sz_dev_name: SLPSTR = sz_dev_name_cstr.as_ptr();
-                let mut state: c_long = -1;
-                let result = unsafe {fn_get_dev_state(sz_dev_name, &mut state)};
-                return Some(DevStateResult { 
-                    dev_name: dev_name.to_string(), 
-                    state, 
-                    result: ErrorCodes::get_error(result),
-                });
+            match CString::new(dev_name) {
+                Ok(sz_dev_name_cstr) => {
+                    let sz_dev_name: SLPSTR = sz_dev_name_cstr.as_ptr();
+                    let mut state: c_long = -1;
+                    let result = unsafe {fn_get_dev_state(sz_dev_name, &mut state)};
+                    return Some(DevStateResult { 
+                        dev_name: dev_name.to_string(), 
+                        state, 
+                        result: ErrorCodes::get_error(result),
+                    });
+                },
+                Err(err) => {
+                    logger::error!("error occured when convert the device name to c-string: {}", err);
+                }
             }
+        }
+        else {
+            logger::warn!("load get device state function failed");
         }
         None
     }
@@ -167,7 +196,16 @@ impl DeviceManager {
                 if let Some(dev_connector) = DeviceManager::connect_dev(&dev_list.sz_name_list[0]) {
                     return if dev_connector.result.is_ok() {Some(((&dev_list.sz_name_list[0]).to_string(), dev_connector.h_dev.clone()))} else {None};
                 }
+                else {
+                    logger::warn!("connect device with name[{}] failed", &dev_list.sz_name_list[0]);
+                }
             }
+            else {
+                logger::warn!("there is no available device to connect");
+            }
+        }
+        else {
+            logger::warn!("list devices failed");
         }
         None
     }

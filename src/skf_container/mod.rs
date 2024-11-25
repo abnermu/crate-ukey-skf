@@ -1,5 +1,6 @@
 use std::{ffi::CString, os::raw::{c_char, c_int, c_long}};
 use base64::Engine;
+use log as logger;
 use super::*;
 
 /// 枚举容器列表结果
@@ -77,6 +78,9 @@ impl ContainerManager {
                 result: ErrorCodes::get_error(result),
             });
         }
+        else {
+            logger::warn!("load list containers function failed");
+        }
         None
     }
     /// 打开容器
@@ -85,16 +89,24 @@ impl ContainerManager {
     /// - `container_name` 容器名称
     pub fn open_container(h_app: APPLICATIONHANDLE, container_name: &str) -> Option<ContainerOpenResult> {
         if let Some(ref fn_open_container) = unsafe {LibUtil::load_fun_in_dll::<SKFOpenContainer>(FN_NAME_SKF_OPENCONTAINER)} {
-            if let Ok(sz_container_name_cstr) = CString::new(container_name) {
-                let sz_container_name: SLPSTR = sz_container_name_cstr.as_ptr();
-                let ph_container: *mut CONTAINERHANDLE = &mut std::ptr::null_mut();
-                let result = unsafe {fn_open_container(h_app, sz_container_name, ph_container)};
-                return Some(ContainerOpenResult {
-                    sz_container_name: container_name.to_string(),
-                    h_container: unsafe {*ph_container},
-                    result: ErrorCodes::get_error(result),
-                });
+            match CString::new(container_name) {
+                Ok(sz_container_name_cstr) => {
+                    let sz_container_name: SLPSTR = sz_container_name_cstr.as_ptr();
+                    let ph_container: *mut CONTAINERHANDLE = &mut std::ptr::null_mut();
+                    let result = unsafe {fn_open_container(h_app, sz_container_name, ph_container)};
+                    return Some(ContainerOpenResult {
+                        sz_container_name: container_name.to_string(),
+                        h_container: unsafe {*ph_container},
+                        result: ErrorCodes::get_error(result),
+                    });
+                },
+                Err(err) => {
+                    logger::error!("error occured when convert the conatiner name to c-string: {}", err);
+                }
             }
+        }
+        else {
+            logger::warn!("load open container function failed");
         }
         None
     }
@@ -105,6 +117,9 @@ impl ContainerManager {
         if let Some(ref fn_close_container) = unsafe {LibUtil::load_fun_in_dll::<SKFCloseContainer>(FN_NAME_SKF_CLOSECONTAINER)} {
             let result = unsafe {fn_close_container(h_container)};
             return Some(ErrorCodes::get_error(result));
+        }
+        else {
+            logger::warn!("load close container function failed");
         }
         None
     }
@@ -120,6 +135,9 @@ impl ContainerManager {
                 result: ErrorCodes::get_error(result),
             });
         }
+        else {
+            logger::warn!("load get container type function failed");
+        }
         None
     }
     /// 导出容器内的证书
@@ -134,6 +152,9 @@ impl ContainerManager {
             if ErrorCodes::is_ok(result) && cert_len > 0 {
                 cert.truncate(cert_len as usize);
             }
+            else {
+                logger::error!("export cert failed");
+            }
             let mut rtn: ExCertResult = ExCertResult {
                 cert: cert.clone(),
                 cert64: String::from(""),
@@ -141,6 +162,9 @@ impl ContainerManager {
             };
             rtn.cert64 = base64::engine::general_purpose::STANDARD.encode(&rtn.cert);
             return Some(rtn);
+        }
+        else {
+            logger::warn!("load export cert function failed");
         }
         None
     }
@@ -156,6 +180,12 @@ impl ContainerManager {
                     return if container_opener.result.is_ok() {Some(((&container_list.sz_container_list[0]).to_string(), container_opener.h_container.clone()))} else {None};
                 }
             }
+            else {
+                logger::warn!("there is no available container to open");
+            }
+        }
+        else {
+            logger::warn!("list containers failed");
         }
         None
     }

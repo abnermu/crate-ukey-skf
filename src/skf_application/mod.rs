@@ -1,4 +1,5 @@
 use std::{ffi::CString, os::raw::{c_char, c_long}};
+use log as logger;
 use super::*;
 
 /// 枚举应用结果
@@ -45,6 +46,9 @@ impl AppManager {
                 result: ErrorCodes::get_error(result)
             });
         }
+        else {
+            logger::warn!("load list applications function failed");
+        }
         None
     }
     /// 打开应用
@@ -53,16 +57,24 @@ impl AppManager {
     /// - `app_name` 应用名称
     pub fn open_app(h_dev: DEVHANDLE, app_name: &str) -> Option<AppOpenResult> {
         if let Some(ref fn_enum_app) = unsafe {LibUtil::load_fun_in_dll::<SKFOpenApplication>(FN_NAME_SKF_OPENAPPLICATION)} {
-            if let Ok(sz_app_name_cstr) = CString::new(app_name) {
-                let sz_app_name: SLPSTR = sz_app_name_cstr.as_ptr();
-                let ph_app: *mut APPLICATIONHANDLE = &mut std::ptr::null_mut();
-                let result = unsafe {fn_enum_app(h_dev, sz_app_name, ph_app)};
-                return Some(AppOpenResult {
-                    sz_app_name: app_name.to_string(),
-                    h_app: unsafe {*ph_app},
-                    result: ErrorCodes::get_error(result),
-                });
+            match CString::new(app_name) {
+                Ok(sz_app_name_cstr) => {
+                    let sz_app_name: SLPSTR = sz_app_name_cstr.as_ptr();
+                    let ph_app: *mut APPLICATIONHANDLE = &mut std::ptr::null_mut();
+                    let result = unsafe {fn_enum_app(h_dev, sz_app_name, ph_app)};
+                    return Some(AppOpenResult {
+                        sz_app_name: app_name.to_string(),
+                        h_app: unsafe {*ph_app},
+                        result: ErrorCodes::get_error(result),
+                    });
+                },
+                Err(err) => {
+                    logger::error!("error occured when convert the application name to c-string: {}", err);
+                }
             }
+        }
+        else {
+            logger::warn!("load open application function failed");
         }
         None
     }
@@ -73,6 +85,9 @@ impl AppManager {
         if let Some(ref fn_close_app) = unsafe {LibUtil::load_fun_in_dll::<SKFCloseApplication>(FN_NAME_SKF_CLOSEAPPLICATION)} {
             let result = unsafe {fn_close_app(h_app)};
             return Some(ErrorCodes::get_error(result));
+        }
+        else {
+            logger::warn!("load close application function failed");
         }
         None
     }
@@ -87,7 +102,16 @@ impl AppManager {
                 if let Some(app_opener) = AppManager::open_app(h_dev.clone(), &app_list.sz_app_name[0]) {
                     return if app_opener.result.is_ok() {Some(((&app_list.sz_app_name[0]).to_string(), app_opener.h_app.clone()))} else {None};
                 }
+                else {
+                    logger::warn!("open application with name[{}] failed", &app_list.sz_app_name[0]);
+                }
             }
+            else {
+                logger::warn!("there is no avalilable application to open");
+            }
+        }
+        else {
+            logger::warn!("list availiable applications failed");
         }
         None
     }
