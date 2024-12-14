@@ -37,10 +37,15 @@ impl AppManager {
     /// - `h_dev` 设备连接句柄
     pub fn list_apps(h_dev: DEVHANDLE) -> Option<AppEnumResult> {
         if let Some(ref fn_enum_app) = unsafe {LibUtil::load_fun_in_dll::<SKFEnumApplication>(FN_NAME_SKF_ENUMAPPLICATION)} {
-            let mut sz_app_name_vec: Vec<c_char> = vec![0; 255];
-            let sz_app_name: LPSTR = sz_app_name_vec.as_mut_ptr();
-            let mut pul_size: c_long = 255;
-            let result = unsafe {fn_enum_app(h_dev, sz_app_name, &mut pul_size)};
+            let mut sz_app_name_vec: Vec<c_char> = vec![0; LibUtil::LEN_NAMES];
+            let mut sz_app_name: LPSTR = sz_app_name_vec.as_mut_ptr();
+            let mut pul_size: c_long = LibUtil::LEN_NAMES as c_long;
+            let mut result = unsafe {fn_enum_app(h_dev, sz_app_name, &mut pul_size)};
+            if !ErrorCodes::is_ok(result) && pul_size > LibUtil::LEN_NAMES as c_long {
+                sz_app_name_vec = vec![0; pul_size as usize];
+                sz_app_name = sz_app_name_vec.as_mut_ptr();
+                result = unsafe {fn_enum_app(h_dev, sz_app_name, &mut pul_size)};
+            }
             return Some(AppEnumResult {
                 sz_app_name: if ErrorCodes::is_ok(result) { unsafe {jyframe::StringUtil::read_c_strings(sz_app_name, pul_size)} } else { vec![] },
                 result: ErrorCodes::get_error(result)
@@ -91,28 +96,26 @@ impl AppManager {
         }
         None
     }
-    /// 获取可用应用句柄
-    /// # 参数
-    /// - `h_dev` 设备连接句柄
-    pub fn get_app_available(h_dev: DEVHANDLE) -> Option<(String, APPLICATIONHANDLE)> {
-        // 第一步枚举应用
-        if let Some(app_list) = AppManager::list_apps(h_dev.clone()) {
-            if app_list.result.is_ok() && app_list.sz_app_name.len() > 0 {
-                // 第二步打开应用
-                if let Some(app_opener) = AppManager::open_app(h_dev.clone(), &app_list.sz_app_name[0]) {
-                    return if app_opener.result.is_ok() {Some(((&app_list.sz_app_name[0]).to_string(), app_opener.h_app.clone()))} else {None};
-                }
-                else {
-                    logger::warn!("open application with name[{}] failed", &app_list.sz_app_name[0]);
-                }
-            }
-            else {
-                logger::warn!("there is no avalilable application to open");
-            }
-        }
-        else {
-            logger::warn!("list availiable applications failed");
-        }
-        None
-    }
+    
+    // pub fn get_app_available(h_dev: DEVHANDLE) -> Option<(String, APPLICATIONHANDLE)> {
+    //     // 第一步枚举应用
+    //     if let Some(app_list) = AppManager::list_apps(h_dev.clone()) {
+    //         if app_list.result.is_ok() && app_list.sz_app_name.len() > 0 {
+    //             // 第二步打开应用
+    //             if let Some(app_opener) = AppManager::open_app(h_dev.clone(), &app_list.sz_app_name[0]) {
+    //                 return if app_opener.result.is_ok() {Some(((&app_list.sz_app_name[0]).to_string(), app_opener.h_app.clone()))} else {None};
+    //             }
+    //             else {
+    //                 logger::warn!("open application with name[{}] failed", &app_list.sz_app_name[0]);
+    //             }
+    //         }
+    //         else {
+    //             logger::warn!("there is no avalilable application to open");
+    //         }
+    //     }
+    //     else {
+    //         logger::warn!("list availiable applications failed");
+    //     }
+    //     None
+    // }
 }

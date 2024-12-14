@@ -12,6 +12,17 @@ impl LibUtil {
     /// 
     /// 位于C:\\Windows\\System32[SysWOW64]下
     pub const LIB_NAME: &str = "JKLX_UKEY_GMAPI.dll";
+    /// 名称【设备名称、应用名称、窗口名称】长度
+    pub const LEN_NAMES: usize = 256;
+    /// 密钥长度
+    pub const LEN_KEY: usize = 132;
+    /// 证书长度
+    pub const LEN_CERT: usize = 2048;
+    /// 签名长度
+    pub const LEN_SIGN: usize = 128;
+    /// 加密长度【实际长度是原文长度 + 此值】128 + 32 + 4
+    pub const LEN_ENCRY: usize = 164;
+
     /// 加载dll（全局仅加载一次）
     pub unsafe fn load_lib() {
         if SKF.is_none() {
@@ -315,15 +326,20 @@ impl Asn1Util {
         if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_bytes) {
             let mut vec_issuer_wrapper: Vec<u8> = Vec::new();
             let mut vec_issuer_container: Vec<u8> = Vec::new();
-            if let Some(issuer_c) = cert.issuer().iter_country().last() {
-                Asn1Util::write_issuer_item(issuer_c, &mut vec_issuer_container);
+            for issuer_it in cert.issuer().iter() {
+                if let Some(issuer_item) = issuer_it.iter().last() {
+                    Asn1Util::write_issuer_item(issuer_item, &mut vec_issuer_container);
+                }
             }
-            if let Some(issuer_o) = cert.issuer().iter_organization().last() {
-                Asn1Util::write_issuer_item(issuer_o, &mut vec_issuer_container);
-            }
-            if let Some(issuer_cn) = cert.issuer().iter_common_name().last() {
-                Asn1Util::write_issuer_item(issuer_cn, &mut vec_issuer_container);
-            }
+            // if let Some(issuer_c) = cert.issuer().iter_country().last() {
+            //     Asn1Util::write_issuer_item(issuer_c, &mut vec_issuer_container);
+            // }
+            // if let Some(issuer_o) = cert.issuer().iter_organization().last() {
+            //     Asn1Util::write_issuer_item(issuer_o, &mut vec_issuer_container);
+            // }
+            // if let Some(issuer_cn) = cert.issuer().iter_common_name().last() {
+            //     Asn1Util::write_issuer_item(issuer_cn, &mut vec_issuer_container);
+            // }
             let seq_issuer_container = asn1_rs::Sequence::new(vec_issuer_container.into());
             let _ = seq_issuer_container.write_der(&mut vec_issuer_wrapper);
             let _ = asn1_rs::Integer::new(cert.raw_serial()).write_der(&mut vec_issuer_wrapper);

@@ -69,10 +69,15 @@ impl ContainerManager {
     /// - `h_app` 应用打开句柄
     pub fn list_containers(h_app: APPLICATIONHANDLE) -> Option<EnumContainerResult> {
         if let Some(ref fn_enum_container) = unsafe {LibUtil::load_fun_in_dll::<SKFEnumContainer>(FN_NAME_SKF_ENUMCONTAINER)} {
-            let mut sz_container_name_vec: Vec<c_char> = vec![0; 255];
-            let sz_container_name: LPSTR = sz_container_name_vec.as_mut_ptr();
-            let mut pul_size: c_long = 255;
-            let result = unsafe {fn_enum_container(h_app, sz_container_name, &mut pul_size)};
+            let mut sz_container_name_vec: Vec<c_char> = vec![0; LibUtil::LEN_NAMES];
+            let mut sz_container_name: LPSTR = sz_container_name_vec.as_mut_ptr();
+            let mut pul_size: c_long = LibUtil::LEN_NAMES as c_long;
+            let mut result = unsafe {fn_enum_container(h_app, sz_container_name, &mut pul_size)};
+            if !ErrorCodes::is_ok(result) && pul_size > LibUtil::LEN_NAMES as c_long {
+                sz_container_name_vec = vec![0; pul_size as usize];
+                sz_container_name = sz_container_name_vec.as_mut_ptr();
+                result = unsafe {fn_enum_container(h_app, sz_container_name, &mut pul_size)};
+            }
             return Some(EnumContainerResult {
                 sz_container_list: if ErrorCodes::is_ok(result) { unsafe {jyframe::StringUtil::read_c_strings(sz_container_name, pul_size)} } else { vec![] },
                 result: ErrorCodes::get_error(result),
@@ -146,9 +151,13 @@ impl ContainerManager {
     /// - `b_sign_flag` 是否导出签名证书，为true时导出签名证书，否则导出加密证书
     pub fn export_cert(h_container: CONTAINERHANDLE, b_sign_flag: bool) -> Option<ExCertResult> {
         if let Some(ref fn_export_cert) = unsafe {LibUtil::load_fun_in_dll::<SKFExportCertificate>(FN_NAME_SKF_EXPORTCERTIFICATE)} {
-            let mut cert: Vec<u8> = vec![0; 2048];
-            let mut cert_len: c_long = 2048;
-            let result = unsafe {fn_export_cert(h_container, if b_sign_flag {1} else {0}, cert.as_mut_ptr(), &mut cert_len)};
+            let mut cert: Vec<u8> = vec![0; LibUtil::LEN_CERT];
+            let mut cert_len: c_long = LibUtil::LEN_CERT as c_long;
+            let mut result = unsafe {fn_export_cert(h_container, if b_sign_flag {1} else {0}, cert.as_mut_ptr(), &mut cert_len)};
+            if !ErrorCodes::is_ok(result) && cert_len > LibUtil::LEN_CERT as c_long {
+                cert = vec![0; cert_len as usize];
+                result = unsafe {fn_export_cert(h_container, if b_sign_flag {1} else {0}, cert.as_mut_ptr(), &mut cert_len)};
+            }
             if ErrorCodes::is_ok(result) && cert_len > 0 {
                 cert.truncate(cert_len as usize);
             }
@@ -168,25 +177,23 @@ impl ContainerManager {
         }
         None
     }
-    /// 获取可用容器句柄
-    /// # 参数
-    /// - `h_app` 应用句柄
-    pub fn get_container_available(h_app: APPLICATIONHANDLE) -> Option<(String, CONTAINERHANDLE)> {
-        // 第一步枚举容器
-        if let Some(container_list) = ContainerManager::list_containers(h_app.clone()) {
-            if container_list.result.is_ok() && container_list.sz_container_list.len() > 0 {
-                // 第六步打开容器
-                if let Some(container_opener) = ContainerManager::open_container(h_app.clone(), &container_list.sz_container_list[0]) {
-                    return if container_opener.result.is_ok() {Some(((&container_list.sz_container_list[0]).to_string(), container_opener.h_container.clone()))} else {None};
-                }
-            }
-            else {
-                logger::warn!("there is no available container to open");
-            }
-        }
-        else {
-            logger::warn!("list containers failed");
-        }
-        None
-    }
+    
+    // pub fn get_container_available(h_app: APPLICATIONHANDLE) -> Option<(String, CONTAINERHANDLE)> {
+    //     // 第一步枚举容器
+    //     if let Some(container_list) = ContainerManager::list_containers(h_app.clone()) {
+    //         if container_list.result.is_ok() && container_list.sz_container_list.len() > 0 {
+    //             // 第六步打开容器
+    //             if let Some(container_opener) = ContainerManager::open_container(h_app.clone(), &container_list.sz_container_list[0]) {
+    //                 return if container_opener.result.is_ok() {Some(((&container_list.sz_container_list[0]).to_string(), container_opener.h_container.clone()))} else {None};
+    //             }
+    //         }
+    //         else {
+    //             logger::warn!("there is no available container to open");
+    //         }
+    //     }
+    //     else {
+    //         logger::warn!("list containers failed");
+    //     }
+    //     None
+    // }
 }

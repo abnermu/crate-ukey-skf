@@ -108,10 +108,15 @@ impl DeviceManager {
     /// - `present` 为true时获取状态可用设备，为false时支持的设备
     pub fn list_dev(present: bool) -> Option<DevEnumResult> {
         if let Some(ref fn_enum_dev) = unsafe {LibUtil::load_fun_in_dll::<SKFEnumDev>(FN_NAME_SKF_ENUMDEV)} {
-            let mut sz_name_list_vec: Vec<c_char> = vec![0; 255];
-            let sz_name_list: LPSTR = sz_name_list_vec.as_mut_ptr();
-            let mut pul_size: c_long = 255;
-            let result = unsafe {fn_enum_dev(if present {1} else {0}, sz_name_list, &mut pul_size)};
+            let mut sz_name_list_vec: Vec<c_char> = vec![0; LibUtil::LEN_NAMES];
+            let mut sz_name_list: LPSTR = sz_name_list_vec.as_mut_ptr();
+            let mut pul_size: c_long = LibUtil::LEN_NAMES as c_long;
+            let mut result = unsafe {fn_enum_dev(if present {1} else {0}, sz_name_list, &mut pul_size)};
+            if !ErrorCodes::is_ok(result) && pul_size > LibUtil::LEN_NAMES as c_long {
+                sz_name_list_vec = vec![0; pul_size as usize];
+                sz_name_list = sz_name_list_vec.as_mut_ptr();
+                result = unsafe {fn_enum_dev(if present {1} else {0}, sz_name_list, &mut pul_size)};
+            }
             return Some(DevEnumResult {
                 sz_name_list: if ErrorCodes::is_ok(result) { unsafe {jyframe::StringUtil::read_c_strings(sz_name_list, pul_size)} } else { vec![] },
                 result: ErrorCodes::get_error(result),
@@ -187,26 +192,26 @@ impl DeviceManager {
         }
         None
     }
-    /// 获取设备连接句柄
-    pub fn get_device_available() -> Option<(String, DEVHANDLE)> {
-        // 第一步枚举可用设备列表
-        if let Some(dev_list) = DeviceManager::list_dev(true) {
-            if dev_list.result.is_ok() && dev_list.sz_name_list.len() > 0 {
-                // 第二步连接设备
-                if let Some(dev_connector) = DeviceManager::connect_dev(&dev_list.sz_name_list[0]) {
-                    return if dev_connector.result.is_ok() {Some(((&dev_list.sz_name_list[0]).to_string(), dev_connector.h_dev.clone()))} else {None};
-                }
-                else {
-                    logger::warn!("connect device with name[{}] failed", &dev_list.sz_name_list[0]);
-                }
-            }
-            else {
-                logger::warn!("there is no available device to connect");
-            }
-        }
-        else {
-            logger::warn!("list devices failed");
-        }
-        None
-    }
+    
+    // pub fn get_device_available() -> Option<(String, DEVHANDLE)> {
+    //     // 第一步枚举可用设备列表
+    //     if let Some(dev_list) = DeviceManager::list_dev(true) {
+    //         if dev_list.result.is_ok() && dev_list.sz_name_list.len() > 0 {
+    //             // 第二步连接设备
+    //             if let Some(dev_connector) = DeviceManager::connect_dev(&dev_list.sz_name_list[0]) {
+    //                 return if dev_connector.result.is_ok() {Some(((&dev_list.sz_name_list[0]).to_string(), dev_connector.h_dev.clone()))} else {None};
+    //             }
+    //             else {
+    //                 logger::warn!("connect device with name[{}] failed", &dev_list.sz_name_list[0]);
+    //             }
+    //         }
+    //         else {
+    //             logger::warn!("there is no available device to connect");
+    //         }
+    //     }
+    //     else {
+    //         logger::warn!("list devices failed");
+    //     }
+    //     None
+    // }
 }

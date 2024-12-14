@@ -1,3 +1,5 @@
+use log as logger;
+
 mod skf_types;
 mod skf_error;
 mod skf_util;
@@ -26,6 +28,37 @@ struct PinStore {
     pin: String,
 }
 static mut PIN_STORE: Option<PinStore> = None;
+/// 容器信息存储
+#[derive(Debug)]
+struct ContainerInfo {
+    container_name: String,
+    h_container: Option<CONTAINERHANDLE>,
+}
+/// 应用信息存储
+#[derive(Debug)]
+struct AppInfo {
+    app_name: String,
+    h_app: Option<APPLICATIONHANDLE>,
+    containers: Vec<ContainerInfo>,
+}
+/// 设备信息存储
+#[derive(Debug)]
+struct DeviceInfo {
+    dev_name: String,
+    h_dev: Option<DEVHANDLE>,
+    applications: Vec<AppInfo>,
+}
+/// 设备数据
+#[allow(dead_code)]
+#[derive(Debug)]
+struct DeviceData {
+    dev_name: String,
+    h_dev: DEVHANDLE,
+    app_name: String,
+    h_app: APPLICATIONHANDLE,
+    constainer_name: String,
+    h_container: CONTAINERHANDLE,
+}
 /// 证书信息类型
 #[derive(PartialEq)]
 pub enum CertInfo {
@@ -44,32 +77,137 @@ pub enum CertInfo {
     /// 颁发机构
     Issuer,
 }
+/// 初始化设备---获取设备、应用、容器句柄
+fn init_device() -> Option<DeviceData> {
+    let mut dev_info: DeviceInfo = DeviceInfo {
+        dev_name: String::from(""),
+        h_dev: None,
+        applications: Vec::new(),
+    };
+    // 设备只取第一个，把该设备下所有可用的应用、容器统统取出来，后续再判断有效性
+    if let Some(dev_list_rst) = DeviceManager::list_dev(true) {
+        if dev_list_rst.result.is_ok() && dev_list_rst.sz_name_list.len() > 0 {
+            if let Some(dev_conn_rst) = DeviceManager::connect_dev(dev_list_rst.sz_name_list[0].as_str()) {
+                if dev_conn_rst.result.is_ok() {
+                    dev_info.dev_name = dev_conn_rst.dev_name.clone();
+                    dev_info.h_dev = Some(dev_conn_rst.h_dev.clone());
+                    if let Some(app_list_rst) = AppManager::list_apps(dev_conn_rst.h_dev.clone()) {
+                        if app_list_rst.result.is_ok() && app_list_rst.sz_app_name.len() > 0 {
+                            for app_name in app_list_rst.sz_app_name {
+                                if let Some(app_open_rst) = AppManager::open_app(dev_conn_rst.h_dev.clone(), app_name.as_str()) {
+                                    if app_open_rst.result.is_ok() {
+                                        let mut app_info: AppInfo = AppInfo {
+                                            app_name: app_open_rst.sz_app_name.clone(),
+                                            h_app: Some(app_open_rst.h_app.clone()),
+                                            containers: Vec::new(),
+                                        };
+                                        if let Some(ct_list_rst) = ContainerManager::list_containers(app_open_rst.h_app.clone()) {
+                                            if ct_list_rst.result.is_ok() && ct_list_rst.sz_container_list.len() > 0 {
+                                                for ct_name in ct_list_rst.sz_container_list {
+                                                    if let Some(ct_open_rst) = ContainerManager::open_container(app_open_rst.h_app.clone(), ct_name.as_str()) {
+                                                        let ct_info: ContainerInfo = ContainerInfo {
+                                                            container_name: ct_open_rst.sz_container_name.clone(),
+                                                            h_container: Some(ct_open_rst.h_container.clone()),
+                                                        };
+                                                        app_info.containers.push(ct_info);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        dev_info.applications.push(app_info);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // 存在设备句柄、应用以及容器才做后续处理，否则认为初始化失败
+    if dev_info.h_dev.is_some() && dev_info.applications.len() > 0 && dev_info.applications[0].containers.len() > 0 {
+        for i in (0..dev_info.applications.len()).rev() {
+            for j in (0..dev_info.applications[i].containers.len()).rev() {
+                // 证书无效的容器直接关闭删除，判断过程中出现异常情况的也都删除
+                if let Some(cert_rst) = ContainerManager::export_cert(dev_info.applications[i].containers[j].h_container.unwrap().clone(), true) {
+                    if cert_rst.result.is_ok() {
+                        if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_rst.cert.clone()) {
+                            if cert.validity().not_after.timestamp() < chrono::Local::now().timestamp() {
+                                let rm_ct = dev_info.applications[i].containers.remove(j);
+                                let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
+                                continue;
+                            }
+                        }
+                        else {
+                            let rm_ct = dev_info.applications[i].containers.remove(j);
+                            let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
+                            continue;
+                        }
+                    }
+                    else {
+                        let rm_ct = dev_info.applications[i].containers.remove(j);
+                        let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
+                        continue;
+                    }
+                }
+                else {
+                    let rm_ct = dev_info.applications[i].containers.remove(j);
+                    let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
+                    continue;
+                }
+            }
+            // 没有容器的应用直接关闭删除
+            if dev_info.applications[i].containers.len() <= 0 {
+                let rm_app = dev_info.applications.remove(i);
+                let _ = AppManager::close_app(rm_app.h_app.unwrap().clone());
+                continue;
+            }
+        }
+        // 如果还存在有效应用、容器的取第一个应用以及第一个容器出来，其他的都不要了，关闭删除
+        if dev_info.applications.len() > 0 && dev_info.applications[0].containers.len() > 0 {
+            let dev_data: DeviceData = DeviceData {
+                dev_name: dev_info.dev_name.clone(),
+                h_dev: dev_info.h_dev.unwrap().clone(),
+                app_name: dev_info.applications[0].app_name.clone(),
+                h_app: dev_info.applications[0].h_app.unwrap().clone(),
+                constainer_name: dev_info.applications[0].containers[0].container_name.clone(),
+                h_container: dev_info.applications[0].containers[0].h_container.unwrap().clone(),
+            };
+            for i in (1..dev_info.applications.len()).rev() {
+                for j in (1..dev_info.applications[i].containers.len()).rev() {
+                    let rm_ct = dev_info.applications[i].containers.remove(j);
+                    let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
+                    continue;
+                }
+                let rm_app = dev_info.applications.remove(i);
+                let _ = AppManager::close_app(rm_app.h_app.unwrap().clone());
+                continue;
+            }
+            return Some(dev_data);
+        }
+    }
+    logger::error!("设备初始化失败");
+    None
+}
 /// 获取证书内容
 /// #参数
 /// - `for_sign` 获取签名证书
 fn get_cert_content(for_sign: bool) -> Option<Vec<u8>> {
-    // 第一步获取可用设备句柄
-    if let Some((_dev_name, h_dev)) = DeviceManager::get_device_available() {
-        // 第二步获取应用句柄
-        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
-            // 第三步获取容器句柄
-            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
-                // 最后导出证书
-                if let Some(cert) = ContainerManager::export_cert(h_container.clone(), for_sign) {
-                    // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
-                    ContainerManager::close_container(h_container);
-                    AppManager::close_app(h_app);
-                    DeviceManager::disconnect_dev(h_dev);
-                    return if cert.result.is_ok() {Some(cert.cert.clone())} else {None};
-                }
-                // 使用完之后关闭容器
-                ContainerManager::close_container(h_container);
-            }
-            // 使用完之后关闭应用
-            AppManager::close_app(h_app);
+    if let Some(dev_data) = init_device() {
+        // 最后导出证书
+        if let Some(cert) = ContainerManager::export_cert(dev_data.h_container.clone(), for_sign) {
+            // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
+            ContainerManager::close_container(dev_data.h_container.clone());
+            AppManager::close_app(dev_data.h_app.clone());
+            DeviceManager::disconnect_dev(dev_data.h_dev.clone());
+            return if cert.result.is_ok() {Some(cert.cert.clone())} else {None};
         }
-        // 使用完之后关闭设备连接
-        DeviceManager::disconnect_dev(h_dev);
+        // 最后关闭容器
+        ContainerManager::close_container(dev_data.h_container.clone());
+        // 最后关闭应用
+        AppManager::close_app(dev_data.h_app.clone());
+        // 最后关闭连接
+        DeviceManager::disconnect_dev(dev_data.h_dev.clone());
     }
     None
 }
@@ -152,27 +290,26 @@ pub fn is_pin_checked(sz_name: &str) -> bool {
 /// # 参数
 /// - `pin` 用户密码
 pub fn check_pin(pin: &str) -> Option<CheckPinResult> {
-    // 第一步获取可用设备句柄
-    if let Some((dev_name, h_dev)) = DeviceManager::get_device_available() {
-        // 第二步获取应用句柄
-        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
-            if let Some(check_result) = AuthManager::check_pin(h_app.clone(), pin) {
-                // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄都关一遍
-                AppManager::close_app(h_app);
-                DeviceManager::disconnect_dev(h_dev);
-                unsafe {
-                    PIN_STORE = Some(PinStore {
-                        dev_name,
-                        pin: pin.to_string(),
-                    });
-                };
-                return Some(check_result);
-            }
-            // 最后关闭应用
-            AppManager::close_app(h_app);
+    if let Some(dev_data) = init_device() {
+        if let Some(check_result) = AuthManager::check_pin(dev_data.h_app.clone(), pin) {
+            // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄都关一遍
+            ContainerManager::close_container(dev_data.h_container.clone());
+            AppManager::close_app(dev_data.h_app.clone());
+            DeviceManager::disconnect_dev(dev_data.h_dev.clone());
+            unsafe {
+                PIN_STORE = Some(PinStore {
+                    dev_name: dev_data.dev_name.clone(),
+                    pin: pin.to_string(),
+                });
+            };
+            return Some(check_result);
         }
+        // 最后关闭容器
+        ContainerManager::close_container(dev_data.h_container.clone());
+        // 最后关闭应用
+        AppManager::close_app(dev_data.h_app.clone());
         // 最后关闭连接
-        DeviceManager::disconnect_dev(h_dev);
+        DeviceManager::disconnect_dev(dev_data.h_dev.clone());
     }
     None
 }
@@ -232,32 +369,25 @@ pub fn get_ca_info(info_type: CertInfo, for_sign: bool) -> String {
 /// # 参数
 /// - `data` 原文
 pub fn encrypt(data: &str) -> String {
-    // 第一步获取可用设备句柄
-    if let Some((_dev_name, h_dev)) = DeviceManager::get_device_available() {
-        // 第二步获取应用句柄
-        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
-            // 第三步获取容器句柄
-            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
-                // 加密需要传参公钥，所以得导出一下公钥
-                if let Some(pub_key) = SecretService::ex_public_key(h_container.clone(), false) {
-                    if pub_key.result.is_ok() {
-                        if let Some(encrypted) = SecretService::ecc_encrypt(h_dev.clone(), pub_key.key.clone(), data) {
-                            // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
-                            ContainerManager::close_container(h_container);
-                            AppManager::close_app(h_app);
-                            DeviceManager::disconnect_dev(h_dev);
-                            return if encrypted.result.is_ok() {encrypted.encrypted_asn1} else {String::from("")};
-                        }
-                    }
+    if let Some(dev_data) = init_device() {
+        // 加密需要传参公钥，所以得导出一下公钥
+        if let Some(pub_key) = SecretService::ex_public_key(dev_data.h_container.clone(), false) {
+            if pub_key.result.is_ok() {
+                if let Some(encrypted) = SecretService::ecc_encrypt(dev_data.h_dev.clone(), pub_key.key.clone(), data) {
+                    // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
+                    ContainerManager::close_container(dev_data.h_container.clone());
+                    AppManager::close_app(dev_data.h_app.clone());
+                    DeviceManager::disconnect_dev(dev_data.h_dev.clone());
+                    return if encrypted.result.is_ok() {encrypted.encrypted_asn1} else {String::from("")};
                 }
-                // 最后关闭容器
-                ContainerManager::close_container(h_container);
             }
-            // 最后关闭应用
-            AppManager::close_app(h_app);
         }
+        // 最后关闭容器
+        ContainerManager::close_container(dev_data.h_container.clone());
+        // 最后关闭应用
+        AppManager::close_app(dev_data.h_app.clone());
         // 最后关闭连接
-        DeviceManager::disconnect_dev(h_dev);
+        DeviceManager::disconnect_dev(dev_data.h_dev.clone());
     }
     String::from("")
 }
@@ -265,30 +395,23 @@ pub fn encrypt(data: &str) -> String {
 /// # 参数
 /// - `data` 原文
 pub fn decrypt(data: &str) -> String {
-    // 第一步获取可用设备句柄
-    if let Some((dev_name, h_dev)) = DeviceManager::get_device_available() {
-        // 第二步获取应用句柄
-        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
-            // 第三步获取容器句柄
-            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
-                // 解密前需要校验用户口令
-                if is_pin_checked(&dev_name) || AuthManager::check_pin_dialog() {
-                    if let Some(decrypted) = SecretService::ecc_decrypt(h_container.clone(), data) {
-                        // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
-                        ContainerManager::close_container(h_container);
-                        AppManager::close_app(h_app);
-                        DeviceManager::disconnect_dev(h_dev);
-                        return if decrypted.result.is_ok() {decrypted.decryptedplain} else {String::from("")};
-                    }
-                }
-                // 最后关闭容器
-                ContainerManager::close_container(h_container);
+    if let Some(dev_data) = init_device() {
+        // 解密前需要校验用户口令
+        if is_pin_checked(&dev_data.dev_name) || AuthManager::check_pin_dialog() {
+            if let Some(decrypted) = SecretService::ecc_decrypt(dev_data.h_container.clone(), data) {
+                // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
+                ContainerManager::close_container(dev_data.h_container.clone());
+                AppManager::close_app(dev_data.h_app.clone());
+                DeviceManager::disconnect_dev(dev_data.h_dev.clone());
+                return if decrypted.result.is_ok() {decrypted.decryptedplain} else {String::from("")};
             }
-            // 最后关闭应用
-            AppManager::close_app(h_app);
         }
+        // 最后关闭容器
+        ContainerManager::close_container(dev_data.h_container.clone());
+        // 最后关闭应用
+        AppManager::close_app(dev_data.h_app.clone());
         // 最后关闭连接
-        DeviceManager::disconnect_dev(h_dev);
+        DeviceManager::disconnect_dev(dev_data.h_dev.clone());
     }
     String::from("")
 }
@@ -296,34 +419,27 @@ pub fn decrypt(data: &str) -> String {
 /// # 参数
 /// - `data` 原文
 pub fn sign_data(data: &str) -> String {
-    // 第一步获取可用设备句柄
-    if let Some((dev_name, h_dev)) = DeviceManager::get_device_available() {
-        // 第二步获取应用句柄
-        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
-            // 第三步获取容器句柄
-            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
-                if let Some(sign_cert) = ContainerManager::export_cert(h_container.clone(), true) {
-                    if sign_cert.result.is_ok() {
-                        // 签名前需要校验用户口令
-                        if is_pin_checked(&dev_name) || AuthManager::check_pin_dialog() {
-                            if let Some(signed) = SecretService::ecc_sign_data(h_container.clone(), data, &sign_cert.cert64) {
-                                // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
-                                ContainerManager::close_container(h_container);
-                                AppManager::close_app(h_app);
-                                DeviceManager::disconnect_dev(h_dev);
-                                return if signed.result.is_ok() {signed.signature_asn1} else {String::from("")};
-                            }
-                        }
+    if let Some(dev_data) = init_device() {
+        if let Some(sign_cert) = ContainerManager::export_cert(dev_data.h_container.clone(), true) {
+            if sign_cert.result.is_ok() {
+                // 签名前需要校验用户口令
+                if is_pin_checked(&dev_data.dev_name) || AuthManager::check_pin_dialog() {
+                    if let Some(signed) = SecretService::ecc_sign_data(dev_data.h_container.clone(), data, &sign_cert.cert64) {
+                        // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
+                        ContainerManager::close_container(dev_data.h_container.clone());
+                        AppManager::close_app(dev_data.h_app.clone());
+                        DeviceManager::disconnect_dev(dev_data.h_dev.clone());
+                        return if signed.result.is_ok() {signed.signature_asn1} else {String::from("")};
                     }
                 }
-                // 最后关闭容器
-                ContainerManager::close_container(h_container);
             }
-            // 最后关闭应用
-            AppManager::close_app(h_app);
         }
+        // 最后关闭容器
+        ContainerManager::close_container(dev_data.h_container.clone());
+        // 最后关闭应用
+        AppManager::close_app(dev_data.h_app.clone());
         // 最后关闭连接
-        DeviceManager::disconnect_dev(h_dev);
+        DeviceManager::disconnect_dev(dev_data.h_dev.clone());
     }
     String::from("")
 }
@@ -332,32 +448,25 @@ pub fn sign_data(data: &str) -> String {
 /// - `org` 原文
 /// - `signature` 签名值
 pub fn verify_sign(org: &str, signature: &str) -> bool {
-    // 第一步获取可用设备句柄
-    if let Some((_dev_name, h_dev)) = DeviceManager::get_device_available() {
-        // 第二步获取应用句柄
-        if let Some((_app_name, h_app)) = AppManager::get_app_available(h_dev.clone()) {
-            // 第三步获取容器句柄
-            if let Some((_container_name, h_container)) = ContainerManager::get_container_available(h_app.clone()) {
-                // 验签需要传参公钥，所以得导出一下公钥
-                if let Some(pub_key) = SecretService::ex_public_key(h_container.clone(), true) {
-                    if pub_key.result.is_ok() {
-                        if let Some(verified) = SecretService::ecc_verify(h_dev.clone(), org, signature, pub_key.key.clone()) {
-                            // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
-                            ContainerManager::close_container(h_container);
-                            AppManager::close_app(h_app);
-                            DeviceManager::disconnect_dev(h_dev);
-                            return verified.is_ok();
-                        }
-                    }
+    if let Some(dev_data) = init_device() {
+        // 验签需要传参公钥，所以得导出一下公钥
+        if let Some(pub_key) = SecretService::ex_public_key(dev_data.h_container.clone(), true) {
+            if pub_key.result.is_ok() {
+                if let Some(verified) = SecretService::ecc_verify(dev_data.h_dev.clone(), org, signature, pub_key.key.clone()) {
+                    // 马上要返回了，后边所有代码都不会执行了，所以得把设备句柄、应用句柄、容器句柄都关一遍
+                    ContainerManager::close_container(dev_data.h_container.clone());
+                    AppManager::close_app(dev_data.h_app.clone());
+                    DeviceManager::disconnect_dev(dev_data.h_dev.clone());
+                    return verified.is_ok();
                 }
-                // 最后关闭容器
-                ContainerManager::close_container(h_container);
             }
-            // 最后关闭应用
-            AppManager::close_app(h_app);
         }
+        // 最后关闭容器
+        ContainerManager::close_container(dev_data.h_container.clone());
+        // 最后关闭应用
+        AppManager::close_app(dev_data.h_app.clone());
         // 最后关闭连接
-        DeviceManager::disconnect_dev(h_dev);
+        DeviceManager::disconnect_dev(dev_data.h_dev.clone());
     }
     false
 }

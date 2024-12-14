@@ -103,9 +103,13 @@ impl SecretService {
     /// - `b_sign_flag` 是否导出签名公钥，为true时导出签名公钥，否则导出加密公钥
     pub fn ex_public_key(h_container: CONTAINERHANDLE, b_sign_flag: bool) -> Option<PubKeyExResult> {
         if let Some(ref fn_ex_pubkey) = unsafe {LibUtil::load_fun_in_dll::<SKFExportPublicKey>(FN_NAME_SKF_EXPORTPUBLICKEY)} {
-            let mut key_blob: Vec<u8> = vec![0; 132];
-            let mut key_len: c_long = 132;
-            let result = unsafe {fn_ex_pubkey(h_container, if b_sign_flag {1} else {0}, key_blob.as_mut_ptr(), &mut key_len)};
+            let mut key_blob: Vec<u8> = vec![0; LibUtil::LEN_KEY];
+            let mut key_len: c_long = LibUtil::LEN_KEY as c_long;
+            let mut result = unsafe {fn_ex_pubkey(h_container, if b_sign_flag {1} else {0}, key_blob.as_mut_ptr(), &mut key_len)};
+            if !ErrorCodes::is_ok(result) && key_len > LibUtil::LEN_KEY as c_long {
+                key_blob = vec![0; key_len as usize];
+                result = unsafe {fn_ex_pubkey(h_container, if b_sign_flag {1} else {0}, key_blob.as_mut_ptr(), &mut key_len)};
+            }
             if ErrorCodes::is_ok(result) && key_len > 0 {
                 key_blob.truncate(key_len as usize);
             }
@@ -132,7 +136,7 @@ impl SecretService {
     /// - `cert_bytes` 签名证书byte数组
     pub fn ecc_sign_bytes(h_container: CONTAINERHANDLE, data_bytes: Vec<u8>, cert_bytes: Vec<u8>) -> Option<ECCSignResult> {
         if let Some(ref fn_ecc_sign) = unsafe {LibUtil::load_fun_in_dll::<SKFECCSignData>(FN_NAME_SKF_ECCSIGNDATA)} {
-            let mut signature: Vec<u8> = vec![0; 128];
+            let mut signature: Vec<u8> = vec![0; LibUtil::LEN_SIGN];
             let result = unsafe {fn_ecc_sign(h_container, data_bytes.as_ptr(), data_bytes.len() as c_long, signature.as_mut_ptr())};
             let mut rtn = ECCSignResult {
                 signature: signature.clone(),
@@ -230,7 +234,7 @@ impl SecretService {
     pub fn ecc_encrypt(h_dev: DEVHANDLE, pub_key: Vec<u8>, data: &str) -> Option<ECCEncryptResult> {
         if let Some(ref fn_encry) = unsafe {LibUtil::load_fun_in_dll::<SKFExtECCEncrypt>(FN_NAME_SKF_EXTECCENCRYPT)} {
             let data_vec: Vec<u8> = data.as_bytes().to_vec();
-            let mut encrypted: Vec<u8> = vec![0; 128 + 32 + 4 + data_vec.len()];
+            let mut encrypted: Vec<u8> = vec![0; LibUtil::LEN_ENCRY + data_vec.len()];
             let result = unsafe {fn_encry(h_dev, pub_key.as_ptr(), data_vec.as_ptr(), data_vec.len() as c_long, encrypted.as_mut_ptr())};
             let mut rtn = ECCEncryptResult { 
                 data: data.to_string(), 
