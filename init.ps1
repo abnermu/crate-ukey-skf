@@ -1,4 +1,4 @@
-# åˆ¤æ–­æ˜¯å¦å·²å°†åŸå§‹çš„è¿œç¨‹ä»“åº“åoriginé‡å‘½åä¸ºgitlab
+# ÅĞ¶ÏÊÇ·ñÒÑ½«Ô­Ê¼µÄÔ¶³Ì²Ö¿âÃûoriginÖØÃüÃûÎªgitlab
 function Is-Origin-Renamed {
     $remotev = git remote -v
     $remotevarr = $remotev -split '\s+'
@@ -10,7 +10,7 @@ function Is-Origin-Renamed {
     return $false
 }
 
-# åˆ¤æ–­æ˜¯å¦å·²æ·»åŠ githubè¿œç¨‹ä»“åº“
+# ÅĞ¶ÏÊÇ·ñÒÑÌí¼ÓgithubÔ¶³Ì²Ö¿â
 function Is-Gitlhub-Added {
     $remotev = git remote -v
     $remotevarr = $remotev -split '\s+'
@@ -24,24 +24,24 @@ function Is-Gitlhub-Added {
 
 $renamed = Is-Origin-Renamed
 if ($renamed) {
-    Write-Host "gitlabè¿œç¨‹ä»“åº“å·²é‡å‘½åï¼Œæ— é¡»å†æ¬¡æ“ä½œã€‚"
+    Write-Host "gitlabÔ¶³Ì²Ö¿âÒÑÖØÃüÃû£¬ÎŞĞëÔÙ´Î²Ù×÷¡£"
 }
 else {
     git remote rename origin gitlab
-    Write-Host "gitlabè¿œç¨‹ä»“åº“ï¼ˆoriginï¼‰å·²é‡å‘½åä¸ºgitlabã€‚"
+    Write-Host "gitlabÔ¶³Ì²Ö¿â£¨origin£©ÒÑÖØÃüÃûÎªgitlab¡£"
 }
 
 $githubadded = Is-Gitlhub-Added
 if ($githubadded) {
-    Write-Host "å½“å‰gitlabä»“åº“å·²ä¸githubä»“åº“å…³è”å®Œæˆï¼Œæ— é¡»å†æ¬¡æ“ä½œã€‚"
+    Write-Host "µ±Ç°gitlab²Ö¿âÒÑÓëgithub²Ö¿â¹ØÁªÍê³É£¬ÎŞĞëÔÙ´Î²Ù×÷¡£"
 }
 else {
     git remote add github https://github.com/abnermu/crate-ukey-skf.git
     git push -u github main
-    Write-Host "gitlabè¿œç¨‹ä»“åº“å·²å…³è”åˆ°githubå¹¶è¿›è¡Œäº†åˆå§‹åŒ–pushã€‚"
+    Write-Host "gitlabÔ¶³Ì²Ö¿âÒÑ¹ØÁªµ½github²¢½øĞĞÁË³õÊ¼»¯push¡£"
 }
 
-# æ‰§è¡Œå¤–éƒ¨å‘½ä»¤ï¼Œå®é™…ä¸Šæ˜¯èµ·äº†ä¸ªå‘½ä»¤è¡Œå»è·‘å‘½ä»¤ï¼Œä½†è¿™é‡Œè¾¹ä¸éœ€è¦è¿™ä¹ˆåš
+# Ö´ĞĞÍâ²¿ÃüÁî£¬Êµ¼ÊÉÏÊÇÆğÁË¸öÃüÁîĞĞÈ¥ÅÜÃüÁî£¬µ«ÕâÀï±ß²»ĞèÒªÕâÃ´×ö
 # $process = Start-Process "git" -ArgumentList "remote", "-v" -PassThru
 # $process.WaitForExit()
-# Write-Host "git remote -v å‘½ä»¤æ‰§è¡Œç»“æŸ"
+# Write-Host "git remote -v ÃüÁîÖ´ĞĞ½áÊø"

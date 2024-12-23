@@ -126,31 +126,37 @@ fn init_device() -> Option<DeviceData> {
     }
     // 存在设备句柄、应用以及容器才做后续处理，否则认为初始化失败
     if dev_info.h_dev.is_some() && dev_info.applications.len() > 0 && dev_info.applications[0].containers.len() > 0 {
+        logger::info!("设备共包含{}个应用", dev_info.applications.len());
         for i in (0..dev_info.applications.len()).rev() {
+            logger::info!("应用({})内共包含{}个容器", i + 1, dev_info.applications[i].containers.len());
             for j in (0..dev_info.applications[i].containers.len()).rev() {
                 // 证书无效的容器直接关闭删除，判断过程中出现异常情况的也都删除
                 if let Some(cert_rst) = ContainerManager::export_cert(dev_info.applications[i].containers[j].h_container.unwrap().clone(), true) {
                     if cert_rst.result.is_ok() {
                         if let Ok((_bytes, cert)) = x509_parser::prelude::X509Certificate::from_der(&cert_rst.cert.clone()) {
                             if cert.validity().not_after.timestamp() < chrono::Local::now().timestamp() {
+                                logger::warn!("应用({})->容器({})证书过期，已删除", i + 1, j + 1);
                                 let rm_ct = dev_info.applications[i].containers.remove(j);
                                 let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
                                 continue;
                             }
                         }
                         else {
+                            logger::warn!("应用({})->容器({})证书转换失败，已删除", i + 1, j + 1);
                             let rm_ct = dev_info.applications[i].containers.remove(j);
                             let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
                             continue;
                         }
                     }
                     else {
+                        logger::warn!("应用({})->容器({})导出证书失败，已删除", i + 1, j + 1);
                         let rm_ct = dev_info.applications[i].containers.remove(j);
                         let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
                         continue;
                     }
                 }
                 else {
+                    logger::warn!("应用({})->容器({})导出证书失败，已删除", i + 1, j + 1);
                     let rm_ct = dev_info.applications[i].containers.remove(j);
                     let _ = ContainerManager::close_container(rm_ct.h_container.unwrap().clone());
                     continue;
@@ -158,6 +164,7 @@ fn init_device() -> Option<DeviceData> {
             }
             // 没有容器的应用直接关闭删除
             if dev_info.applications[i].containers.len() <= 0 {
+                logger::warn!("应用({})不包含有效容器，已删除", i + 1);
                 let rm_app = dev_info.applications.remove(i);
                 let _ = AppManager::close_app(rm_app.h_app.unwrap().clone());
                 continue;
