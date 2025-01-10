@@ -12,6 +12,7 @@ impl LibUtil {
     /// 
     /// 位于C:\\Windows\\System32[SysWOW64]下
     pub const LIB_NAME: &str = "JKLX_UKEY_GMAPI.dll";
+    pub const LIB_NAME_NEW: &str = "JKLX_LNMRSC_API.dll";
     /// 名称【设备名称、应用名称、窗口名称】长度
     pub const LEN_NAMES: usize = 256;
     /// 密钥长度
@@ -26,11 +27,17 @@ impl LibUtil {
     /// 加载dll（全局仅加载一次）
     pub unsafe fn load_lib() {
         if SKF.is_none() {
-            SKF = match Library::new(LibUtil::LIB_NAME) {
+            SKF = match Library::new(LibUtil::LIB_NAME_NEW) {
                 Ok(lib) => Some(lib),
                 Err(err) => {
-                    logger::error!("error occured when load the library【{}】: {}", LibUtil::LIB_NAME, err);
-                    None
+                    logger::error!("error occured when load the library【{}】, try older version: {}", LibUtil::LIB_NAME_NEW, err);
+                    match Library::new(LibUtil::LIB_NAME) {
+                        Ok(lib) => Some(lib),
+                        Err(err) => {
+                            logger::error!("error occured when load the library【{}】: {}", LibUtil::LIB_NAME_NEW, err);
+                            None
+                        },
+                    }
                 },
             };
         }
